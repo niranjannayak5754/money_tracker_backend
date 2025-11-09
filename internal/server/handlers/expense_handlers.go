@@ -44,16 +44,21 @@ func (h *ExpenseHandlers) create(w http.ResponseWriter, r *http.Request) {
 	uid, _ := primitive.ObjectIDFromHex(uidHex)
 
 	var in struct {
-		Amount     float64   `json:"amount"`
-		Date       time.Time `json:"date"`
-		CategoryID string    `json:"category_id"`
-		Merchant   string    `json:"merchant"`
-		Notes      string    `json:"notes"`
-		Tags       []string  `json:"tags"`
+		Amount     float64             `json:"amount"`
+		Date       shared.FlexibleTime `json:"date"`
+		CategoryID string              `json:"category_id"`
+		Merchant   string              `json:"merchant"`
+		Notes      string              `json:"notes"`
+		Tags       []string            `json:"tags"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Amount <= 0 {
-		httpx.BadReq(w, "invalid json/amount")
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpx.BadReq(w, "invalid json")
+		return
+	}
+
+	if in.Amount <= 0 {
+		httpx.BadReq(w, "amount must be > 0")
 		return
 	}
 
@@ -65,7 +70,7 @@ func (h *ExpenseHandlers) create(w http.ResponseWriter, r *http.Request) {
 
 	out, err := h.svc.Create(r.Context(), uid, expense.CreateInput{
 		Amount:     in.Amount,
-		Date:       shared.ChooseDate(in.Date),
+		Date:       shared.ChooseDate(in.Date.Time),
 		CategoryID: cid,
 		Merchant:   in.Merchant,
 		Notes:      in.Notes,

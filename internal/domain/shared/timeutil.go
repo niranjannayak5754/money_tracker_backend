@@ -10,6 +10,43 @@ import (
 
 var ErrInvalidMonth = errors.New("invalid month format, expected YYYY-MM")
 
+type FlexibleTime struct {
+	time.Time
+}
+
+func (ft *FlexibleTime) UnmarshalJSON(b []byte) error {
+	str := string(b)
+
+	// null or empty
+	if str == "null" || str == `""` {
+		ft.Time = time.Time{}
+		return nil
+	}
+
+	// remove surrounding quotes: "2025-11-10" -> 2025-11-10
+	s := str[1 : len(str)-1]
+
+	// Correct layouts
+	layouts := []string{
+		time.RFC3339,          // 2025-11-10T10:30:00Z
+		"2006-01-02",          // 2025-11-10
+		"2006/01/02",          // 2025/11/10
+		"2006-01-02 15:04:05", // 2025-11-10 10:30:00
+		"2006-01-02T15:04:05", // 2025-11-10T10:30:00
+		"2006-01-02T15:04",    // 2025-11-10T10:30
+		"2006-01-02 15:04",    // 2025-11-10 10:30
+	}
+
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			ft.Time = t
+			return nil
+		}
+	}
+
+	return errors.New("invalid date format")
+}
+
 // MonthBounds returns the start and end timestamps for the given month
 // in UTC. Month must be in "YYYY-MM" format.
 func MonthBounds(month string) (time.Time, time.Time, error) {

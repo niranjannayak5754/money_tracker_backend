@@ -44,20 +44,25 @@ func (h *IncomeHandlers) create(w http.ResponseWriter, r *http.Request) {
 	uid, _ := primitive.ObjectIDFromHex(uidHex)
 
 	var in struct {
-		Amount float64   `json:"amount"`
-		Date   time.Time `json:"date"`
-		Source string    `json:"source"`
-		Notes  string    `json:"notes"`
+		Amount float64             `json:"amount"`
+		Date   shared.FlexibleTime `json:"date"`
+		Source string              `json:"source"`
+		Notes  string              `json:"notes"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Amount <= 0 {
-		httpx.BadReq(w, "invalid json/amount")
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpx.BadReq(w, "invalid json")
+		return
+	}
+
+	if in.Amount <= 0 {
+		httpx.BadReq(w, "amount must be > 0")
 		return
 	}
 
 	rec, err := h.svc.Create(r.Context(), uid, income.CreateInput{
 		Amount: in.Amount,
-		Date:   shared.ChooseDate(in.Date),
+		Date:   shared.ChooseDate(in.Date.Time),
 		Source: in.Source,
 		Notes:  in.Notes,
 	})
