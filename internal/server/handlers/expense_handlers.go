@@ -93,6 +93,10 @@ func (h *ExpenseHandlers) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if items == nil {
+		items = []expense.Model{}
+	}
+
 	httpx.JSON(w, 200, items)
 }
 

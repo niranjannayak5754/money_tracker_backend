@@ -46,6 +46,10 @@ func (h *CategoryHandlers) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if items == nil {
+		items = []category.Model{}
+	}
+
 	httpx.JSON(w, 200, items)
 }
 

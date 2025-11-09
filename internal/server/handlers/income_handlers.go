@@ -82,6 +82,10 @@ func (h *IncomeHandlers) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if items == nil {
+		items = []income.Model{}
+	}
+
 	httpx.JSON(w, 200, items)
 }
 
