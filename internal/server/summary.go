@@ -92,6 +92,18 @@ func aggregateExpenses(ctx context.Context, col *mongo.Collection, uid primitive
 			"_id":   "$category_id",
 			"total": bson.M{"$sum": "$amount"},
 		}}},
+		// join with categories
+		bson.D{{Key: "$lookup", Value: bson.M{
+			"from":         "categories",
+			"localField":   "_id",
+			"foreignField": "_id",
+			"as":           "cat",
+		}}},
+		// unwind cat array
+		bson.D{{Key: "$unwind", Value: bson.M{
+			"path":                       "$cat",
+			"preserveNullAndEmptyArrays": true,
+		}}},
 	})
 	if err != nil {
 		return 0, nil, err
@@ -105,6 +117,9 @@ func aggregateExpenses(ctx context.Context, col *mongo.Collection, uid primitive
 		var x struct {
 			CatID primitive.ObjectID   `bson:"_id"`
 			Total primitive.Decimal128 `bson:"total"`
+			Cat   struct {
+				Name string `bson:"name"`
+			} `bson:"cat"`
 		}
 		if err := cur.Decode(&x); err != nil {
 			return 0, nil, err
@@ -114,8 +129,9 @@ func aggregateExpenses(ctx context.Context, col *mongo.Collection, uid primitive
 		total += f
 
 		cats = append(cats, map[string]any{
-			"category_id": x.CatID.Hex(),
-			"total":       f,
+			"category_id":   x.CatID.Hex(),
+			"category_name": x.Cat.Name, // ✅ now filled
+			"total":         f,
 		})
 	}
 
