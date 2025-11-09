@@ -16,6 +16,9 @@ import (
 func RegisterRoutes(r *chi.Mux, c *Container) {
 	// Public health check
 	r.Get("/health", Health)
+	r.Get("/docs", SwaggerUI)
+	r.Get("/docs/json", OpenAPIJSON)
+	r.Get("/openapi.yaml", c.OpenAPI)
 
 	// Instantiate handlers
 	userH := handlers.NewUserHandlers(c.Users, c.Cfg)

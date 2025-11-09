@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: money-tracker-api
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    region: singapore
+
+    envVars:
+      - key: APP_ENV
+        value: production
+
+      - key: HTTP_ADDR
+        value: :8080
+
+      - key: MONGO_DB
+        value: money_tracker
+
+      - key: MONGO_URI
+        sync: false
+
+      - key: JWT_SECRET
+        sync: false
+
