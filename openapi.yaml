@@ -1,0 +1,229 @@
+openapi: 3.0.3
+info:
+  title: Money Tracker API
+  description: Personal finance tracker backend with categories, income, expenses, summary reporting.
+  version: "1.0.0"
+
+servers:
+  - url: /
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: API is healthy
+
+  /auth/register:
+    post:
+      summary: Register new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+      responses:
+        '201':
+          description: User created
+
+  /auth/login:
+    post:
+      summary: Login user and get JWT access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Token response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+
+  /auth/me:
+    get:
+      summary: Fetch authenticated user's profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User info returned
+
+  /categories:
+    get:
+      summary: List active categories
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create category
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                type:
+                  type: string
+                  enum: [expense, income]
+      responses:
+        '201':
+          description: Category created
+
+  /categories/{id}:
+    put:
+      summary: Update category
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                archived: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+
+  /income:
+    get:
+      summary: List income entries for month
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: month
+          in: query
+          schema: { type: string, example: "2025-01" }
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Add income entry
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number }
+                date: { type: string, format: date-time }
+                source: { type: string }
+                notes: { type: string }
+      responses:
+        '201': { description: Created }
+
+  /expenses:
+    get:
+      summary: List expenses for month
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: month
+          in: query
+          schema: { type: string }
+        - name: category
+          in: query
+          schema: { type: string }
+      responses: { '200': { description: OK } }
+
+    post:
+      summary: Add expense entry
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, category_id]
+              properties:
+                amount: { type: number }
+                category_id: { type: string }
+                date: { type: string, format: date-time }
+                merchant: { type: string }
+                notes: { type: string }
+                tags:
+                  type: array
+                  items: { type: string }
+      responses:
+        '201': { description: Created }
+
+  /expenses/{id}:
+    put:
+      summary: Update expense
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Updated }
+    delete:
+      summary: Delete expense
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+
+  /summary:
+    get:
+      summary: Monthly income/expense summary
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: month
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Summary returned }
+
