@@ -1,4 +1,4 @@
-package handlers
+package handler
 
 import (
 	"encoding/json"
@@ -10,20 +10,19 @@ import (
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/httpx"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/platform/contextutils"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
 )
 
-type IncomeHandlers struct {
+type IncomeHandler struct {
 	svc income.Service
 }
 
-func NewIncomeHandlers(svc income.Service) *IncomeHandlers {
-	return &IncomeHandlers{svc: svc}
+func NewIncomeHandler(svc income.Service) *IncomeHandler {
+	return &IncomeHandler{svc: svc}
 }
 
 // Public Routes for /income
-func (h *IncomeHandlers) Routes() http.Handler {
+func (h *IncomeHandler) Routes() http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/", h.list)
@@ -39,9 +38,11 @@ func (h *IncomeHandlers) Routes() http.Handler {
 //
 
 // POST /income
-func (h *IncomeHandlers) create(w http.ResponseWriter, r *http.Request) {
-	uidHex := contextutils.UID(r.Context())
-	uid, _ := primitive.ObjectIDFromHex(uidHex)
+func (h *IncomeHandler) create(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
 
 	var in struct {
 		Amount float64             `json:"amount"`
@@ -51,12 +52,12 @@ func (h *IncomeHandlers) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpx.BadReq(w, "invalid json")
+		response.BadReq(w, "invalid json")
 		return
 	}
 
 	if in.Amount <= 0 {
-		httpx.BadReq(w, "amount must be > 0")
+		response.BadReq(w, "amount must be > 0")
 		return
 	}
 
@@ -67,23 +68,25 @@ func (h *IncomeHandlers) create(w http.ResponseWriter, r *http.Request) {
 		Notes:  in.Notes,
 	})
 	if err != nil {
-		httpx.ServerErr(w, err)
+		response.ServerErr(w, err)
 		return
 	}
 
-	httpx.JSON(w, 201, rec)
+	response.JSON(w, 201, rec)
 }
 
 // GET /income?month=YYYY-MM
-func (h *IncomeHandlers) list(w http.ResponseWriter, r *http.Request) {
-	uidHex := contextutils.UID(r.Context())
-	uid, _ := primitive.ObjectIDFromHex(uidHex)
+func (h *IncomeHandler) list(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
 
 	month := r.URL.Query().Get("month")
 
 	items, err := h.svc.List(r.Context(), uid, month)
 	if err != nil {
-		httpx.ServerErr(w, err)
+		response.ServerErr(w, err)
 		return
 	}
 
@@ -91,17 +94,19 @@ func (h *IncomeHandlers) list(w http.ResponseWriter, r *http.Request) {
 		items = []income.Model{}
 	}
 
-	httpx.JSON(w, 200, items)
+	response.JSON(w, 200, items)
 }
 
 // PUT /income/{id}
-func (h *IncomeHandlers) update(w http.ResponseWriter, r *http.Request) {
-	uidHex := contextutils.UID(r.Context())
-	uid, _ := primitive.ObjectIDFromHex(uidHex)
+func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
 
 	id, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
 	if err != nil {
-		httpx.BadReq(w, "bad id")
+		response.BadReq(w, "bad id")
 		return
 	}
 
@@ -113,50 +118,52 @@ func (h *IncomeHandlers) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpx.BadReq(w, "invalid json")
+		response.BadReq(w, "invalid json")
 		return
 	}
 
-	ok, err := h.svc.Update(r.Context(), uid, id, income.UpdateInput{
+	updated, err := h.svc.Update(r.Context(), uid, id, income.UpdateInput{
 		Amount: in.Amount,
 		Date:   in.Date,
 		Source: in.Source,
 		Notes:  in.Notes,
 	})
 	if err != nil {
-		httpx.ServerErr(w, err)
+		response.ServerErr(w, err)
 		return
 	}
 
-	if !ok {
-		httpx.NotFound(w)
+	if !updated {
+		response.NotFound(w)
 		return
 	}
 
-	httpx.OK(w)
+	response.OK(w)
 }
 
 // DELETE /income/{id}
-func (h *IncomeHandlers) delete(w http.ResponseWriter, r *http.Request) {
-	uidHex := contextutils.UID(r.Context())
-	uid, _ := primitive.ObjectIDFromHex(uidHex)
+func (h *IncomeHandler) delete(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
 
 	id, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
 	if err != nil {
-		httpx.BadReq(w, "bad id")
+		response.BadReq(w, "bad id")
 		return
 	}
 
-	ok, err := h.svc.Delete(r.Context(), uid, id)
+	deleted, err := h.svc.Delete(r.Context(), uid, id)
 	if err != nil {
-		httpx.ServerErr(w, err)
+		response.ServerErr(w, err)
 		return
 	}
 
-	if !ok {
-		httpx.NotFound(w)
+	if !deleted {
+		response.NotFound(w)
 		return
 	}
 
-	httpx.OK(w)
+	response.OK(w)
 }

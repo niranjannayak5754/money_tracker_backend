@@ -1,4 +1,4 @@
-package contextutils
+package requestctx
 
 import "context"
 
@@ -11,10 +11,6 @@ func WithUID(ctx context.Context, uid string) context.Context {
 }
 
 func UID(ctx context.Context) string {
-	if v := ctx.Value(uidKeyInstance); v != nil {
-		if uid, ok := v.(string); ok {
-			return uid
-		}
-	}
-	return ""
+	uid, _ := ctx.Value(uidKeyInstance).(string)
+	return uid
 }

@@ -1,8 +1,7 @@
-package server
+package summaryrepo
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -10,50 +9,25 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/httpx"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/platform/contextutils"
 )
 
-func (c *Container) Summary(w http.ResponseWriter, r *http.Request) {
-	uidHex := contextutils.UID(r.Context())
-	uid, _ := primitive.ObjectIDFromHex(uidHex)
-
-	// derive month range
-	month := r.URL.Query().Get("month")
-	start, end := shared.MonthRange(month)
-
-	incomeTotal, err := aggregateTotal(r.Context(), c.DB.Collection("income"), uid, start, end)
-	if err != nil {
-		httpx.ServerErr(w, err)
-		return
-	}
-
-	expTotal, catBreakdown, err := aggregateExpenses(r.Context(), c.DB.Collection("expenses"), uid, start, end)
-	if err != nil {
-		httpx.ServerErr(w, err)
-		return
-	}
-
-	httpx.JSON(w, 200, map[string]any{
-		"income_total":       incomeTotal,
-		"expense_total":      expTotal,
-		"savings":            incomeTotal - expTotal,
-		"category_breakdown": catBreakdown,
-	})
+type MongoRepo struct {
+	incomeCol   *mongo.Collection
+	expensesCol *mongo.Collection
 }
 
-//
-// Helpers
-//
+func New(db *mongo.Database) *MongoRepo {
+	return &MongoRepo{
+		incomeCol:   db.Collection("income"),
+		expensesCol: db.Collection("expenses"),
+	}
+}
 
-func aggregateTotal(ctx context.Context, col *mongo.Collection, uid primitive.ObjectID, start, end time.Time) (float64, error) {
-	cur, err := col.Aggregate(ctx, bson.A{
+func (r *MongoRepo) IncomeTotal(ctx context.Context, uid primitive.ObjectID, start, end time.Time) (float64, error) {
+	cur, err := r.incomeCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
 			"user_id": uid,
-			"date": bson.M{
-				"$gte": start,
-				"$lt":  end,
-			},
+			"date":    bson.M{"$gte": start, "$lt": end},
 		}}},
 		bson.D{{Key: "$group", Value: bson.M{
 			"_id":   nil,
@@ -79,27 +53,22 @@ func aggregateTotal(ctx context.Context, col *mongo.Collection, uid primitive.Ob
 	return 0, nil
 }
 
-func aggregateExpenses(ctx context.Context, col *mongo.Collection, uid primitive.ObjectID, start, end time.Time) (float64, []map[string]any, error) {
-	cur, err := col.Aggregate(ctx, bson.A{
+func (r *MongoRepo) ExpenseTotals(ctx context.Context, uid primitive.ObjectID, start, end time.Time) (float64, []map[string]any, error) {
+	cur, err := r.expensesCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
 			"user_id": uid,
-			"date": bson.M{
-				"$gte": start,
-				"$lt":  end,
-			},
+			"date":    bson.M{"$gte": start, "$lt": end},
 		}}},
 		bson.D{{Key: "$group", Value: bson.M{
 			"_id":   "$category_id",
 			"total": bson.M{"$sum": "$amount"},
 		}}},
-		// join with categories
 		bson.D{{Key: "$lookup", Value: bson.M{
 			"from":         "categories",
 			"localField":   "_id",
 			"foreignField": "_id",
 			"as":           "cat",
 		}}},
-		// unwind cat array
 		bson.D{{Key: "$unwind", Value: bson.M{
 			"path":                       "$cat",
 			"preserveNullAndEmptyArrays": true,
@@ -121,6 +90,7 @@ func aggregateExpenses(ctx context.Context, col *mongo.Collection, uid primitive
 				Name string `bson:"name"`
 			} `bson:"cat"`
 		}
+
 		if err := cur.Decode(&x); err != nil {
 			return 0, nil, err
 		}
@@ -130,7 +100,7 @@ func aggregateExpenses(ctx context.Context, col *mongo.Collection, uid primitive
 
 		cats = append(cats, map[string]any{
 			"category_id":   x.CatID.Hex(),
-			"category_name": x.Cat.Name, // ✅ now filled
+			"category_name": x.Cat.Name,
 			"total":         f,
 		})
 	}

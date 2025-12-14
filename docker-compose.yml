@@ -2,7 +2,8 @@ version: "3.9"
 services:
   api:
     build: .
-    env_file: .env
+    env_file: .env.example
+    restart: unless-stopped
     ports:
       - "8080:8080"
     depends_on:

@@ -1,33 +1,47 @@
 package main
 
 import (
+	"context"
 	"log"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/httpx"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/server"
 )
 
 func main() {
-	cfg := config.Load()
-	mc, err := mongo.Connect(cfg.MongoURI)
+	// Load configuration
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer mc.Disconnect()
 
+	// Root context with OS signal handling
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
+	// Mongo connection
+	mc, err := mongo.Connect(ctx, cfg.MongoURI)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer mc.Disconnect(context.Background())
+
+	// Build DI container
 	container := server.BuildContainer(cfg, mc)
 
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
-	r.Use(httpx.CORSSimple())
-	server.RegisterRoutes(r, container)
+	// HTTP server
+	srv := server.New(cfg, container)
 
-	log.Printf("moneyflow api listening on %s", cfg.HTTPAddr)
-	log.Fatal(http.ListenAndServe(cfg.HTTPAddr, r))
+	// Run server (blocks until ctx is done)
+	if err := srv.Run(ctx); err != nil {
+		log.Printf("server stopped with error: %v", err)
+	}
 }

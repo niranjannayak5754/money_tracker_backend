@@ -1,41 +1,34 @@
-package handlers
+package handler
 
 import (
 	"encoding/json"
 	"net/http"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
-
 	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/user"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/httpx"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/platform/contextutils"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/security"
 )
 
-type UserHandlers struct {
+type AuthHandler struct {
 	svc user.Service
 	cfg config.Config
 }
 
-func NewUserHandlers(svc user.Service, cfg config.Config) *UserHandlers {
-	return &UserHandlers{svc: svc, cfg: cfg}
+func NewAuthHandler(svc user.Service, cfg config.Config) *AuthHandler {
+	return &AuthHandler{svc: svc, cfg: cfg}
 }
 
-//
-// AUTH HANDLERS
-//
-
 // POST /auth/register
-func (h *UserHandlers) Register(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpx.BadReq(w, "invalid json")
+		response.BadReq(w, "invalid json")
 		return
 	}
 
@@ -43,66 +36,73 @@ func (h *UserHandlers) Register(w http.ResponseWriter, r *http.Request) {
 		Email:    in.Email,
 		Password: in.Password,
 	})
-
 	if err != nil {
-		httpx.BadReq(w, err.Error())
+		response.BadReq(w, err.Error())
 		return
 	}
 
-	httpx.JSON(w, 201, map[string]any{
+	response.JSON(w, http.StatusCreated, map[string]any{
 		"id":    out.ID.Hex(),
 		"email": out.Email,
 	})
 }
 
 // POST /auth/login
-func (h *UserHandlers) Login(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpx.BadReq(w, "invalid json")
+		response.BadReq(w, "invalid json")
 		return
 	}
 
 	u, err := h.svc.Login(r.Context(), in.Email, in.Password)
 	if err != nil {
-		httpx.Unauthorized(w, "invalid credentials")
+		response.Unauthorized(w, "invalid credentials")
 		return
 	}
 
-	tok, err := security.Sign(h.cfg.JWTSecret, u.ID.Hex(), 7*24*time.Hour)
+	tok, err := security.Sign(
+		h.cfg.JWTSecret,
+		u.ID.Hex(),
+		7*24*time.Hour,
+	)
 	if err != nil {
-		httpx.ServerErr(w, err)
+		response.ServerErr(w, err)
 		return
 	}
 
-	httpx.JSON(w, 200, map[string]string{
+	response.JSON(w, http.StatusOK, map[string]string{
 		"access_token": tok,
 	})
 }
 
 // GET /auth/me
-func (h *UserHandlers) Me(w http.ResponseWriter, r *http.Request) {
-	uidHex := contextutils.UID(r.Context())
-	if uidHex == "" {
-		httpx.Unauthorized(w, "missing uid")
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
 		return
 	}
 
-	id, _ := primitive.ObjectIDFromHex(uidHex)
-
-	u, err := h.svc.GetByID(r.Context(), id)
+	u, err := h.svc.GetByID(r.Context(), uid)
 	if err != nil {
-		httpx.NotFound(w)
+		response.NotFound(w)
 		return
 	}
 
-	httpx.JSON(w, 200, map[string]any{
+	response.JSON(w, http.StatusOK, map[string]any{
 		"id":         u.ID.Hex(),
 		"email":      u.Email,
 		"created_at": u.CreatedAt,
+	})
+}
+
+// POST /auth/logout
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	response.JSON(w, http.StatusOK, map[string]string{
+		"message": "logged out successfully",
 	})
 }

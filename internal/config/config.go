@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"errors"
 	"os"
 )
 
@@ -12,13 +12,22 @@ type Config struct {
 	JWTSecret string
 }
 
-func Load() Config {
-	return Config{
+func Load() (Config, error) {
+	cfg := Config{
 		HTTPAddr:  env("HTTP_ADDR", ":8080"),
-		MongoURI:  must("MONGO_URI"),
+		MongoURI:  os.Getenv("MONGO_URI"),
 		DBName:    env("MONGO_DB", "money_tracker"),
-		JWTSecret: must("JWT_SECRET"),
+		JWTSecret: os.Getenv("JWT_SECRET"),
 	}
+
+	if cfg.MongoURI == "" {
+		return Config{}, errors.New("MONGO_URI is required")
+	}
+	if cfg.JWTSecret == "" {
+		return Config{}, errors.New("JWT_SECRET is required")
+	}
+
+	return cfg, nil
 }
 
 func env(key, fallback string) string {
@@ -26,12 +35,4 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
-}
-
-func must(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Fatalf("missing required env var: %s", key)
-	}
-	return v
 }

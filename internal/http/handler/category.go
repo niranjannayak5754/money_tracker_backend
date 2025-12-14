@@ -1,4 +1,4 @@
-package handlers
+package handler
 
 import (
 	"encoding/json"
@@ -8,20 +8,19 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/category"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/httpx"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/platform/contextutils"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
 )
 
-type CategoryHandlers struct {
+type CategoryHandler struct {
 	svc category.Service
 }
 
-func NewCategoryHandlers(svc category.Service) *CategoryHandlers {
-	return &CategoryHandlers{svc: svc}
+func NewCategoryHandler(svc category.Service) *CategoryHandler {
+	return &CategoryHandler{svc: svc}
 }
 
 // Routes returns a chi.Router for /categories
-func (h *CategoryHandlers) Routes() http.Handler {
+func (h *CategoryHandler) Routes() http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/", h.list)
@@ -36,13 +35,15 @@ func (h *CategoryHandlers) Routes() http.Handler {
 //
 
 // GET /categories
-func (h *CategoryHandlers) list(w http.ResponseWriter, r *http.Request) {
-	uidHex := contextutils.UID(r.Context())
-	uid, _ := primitive.ObjectIDFromHex(uidHex)
+func (h *CategoryHandler) list(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
 
 	items, err := h.svc.List(r.Context(), uid)
 	if err != nil {
-		httpx.ServerErr(w, err)
+		response.ServerErr(w, err)
 		return
 	}
 
@@ -50,13 +51,15 @@ func (h *CategoryHandlers) list(w http.ResponseWriter, r *http.Request) {
 		items = []category.Model{}
 	}
 
-	httpx.JSON(w, 200, items)
+	response.JSON(w, 200, items)
 }
 
 // POST /categories
-func (h *CategoryHandlers) create(w http.ResponseWriter, r *http.Request) {
-	uidHex := contextutils.UID(r.Context())
-	uid, _ := primitive.ObjectIDFromHex(uidHex)
+func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
 
 	var in struct {
 		Name string `json:"name"`
@@ -64,7 +67,7 @@ func (h *CategoryHandlers) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Name == "" {
-		httpx.BadReq(w, "invalid json")
+		response.BadReq(w, "invalid json")
 		return
 	}
 
@@ -73,22 +76,24 @@ func (h *CategoryHandlers) create(w http.ResponseWriter, r *http.Request) {
 		Type: in.Type,
 	})
 	if err != nil {
-		httpx.BadReq(w, err.Error())
+		response.BadReq(w, err.Error())
 		return
 	}
 
-	httpx.JSON(w, 201, out)
+	response.JSON(w, 201, out)
 }
 
 // PUT /categories/{id}
-func (h *CategoryHandlers) update(w http.ResponseWriter, r *http.Request) {
-	uidHex := contextutils.UID(r.Context())
-	uid, _ := primitive.ObjectIDFromHex(uidHex)
+func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
 
 	idHex := chi.URLParam(r, "id")
 	catID, err := primitive.ObjectIDFromHex(idHex)
 	if err != nil {
-		httpx.BadReq(w, "bad category id")
+		response.BadReq(w, "bad category id")
 		return
 	}
 
@@ -98,23 +103,23 @@ func (h *CategoryHandlers) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpx.BadReq(w, "invalid json")
+		response.BadReq(w, "invalid json")
 		return
 	}
 
-	ok, err := h.svc.Update(r.Context(), uid, catID, category.UpdateInput{
+	updated, err := h.svc.Update(r.Context(), uid, catID, category.UpdateInput{
 		Name:     in.Name,
 		Archived: in.Archived,
 	})
 	if err != nil {
-		httpx.ServerErr(w, err)
+		response.ServerErr(w, err)
 		return
 	}
 
-	if !ok {
-		httpx.NotFound(w)
+	if !updated {
+		response.NotFound(w)
 		return
 	}
 
-	httpx.OK(w)
+	response.OK(w)
 }

@@ -2,7 +2,6 @@ package mongo
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
@@ -15,8 +14,8 @@ type Client struct {
 }
 
 // Connect creates a new MongoDB client and verifies the connection.
-func Connect(uri string) (*Client, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func Connect(ctx context.Context, uri string) (*Client, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
@@ -24,21 +23,19 @@ func Connect(uri string) (*Client, error) {
 		return nil, err
 	}
 
-	// Verify connectivity
-	if err = client.Ping(ctx, readpref.Primary()); err != nil {
+	if err := client.Ping(ctx, readpref.Primary()); err != nil {
 		return nil, err
 	}
 
-	log.Printf("mongo db connected successfully")
 	return &Client{client: client}, nil
 }
 
-// Database returns a reference to a specific DB without mutating state.
+// Database returns a DB handle.
 func (c *Client) Database(name string) *mongo.Database {
 	return c.client.Database(name)
 }
 
 // Disconnect closes the MongoDB client.
-func (c *Client) Disconnect() {
-	_ = c.client.Disconnect(context.Background())
+func (c *Client) Disconnect(ctx context.Context) error {
+	return c.client.Disconnect(ctx)
 }

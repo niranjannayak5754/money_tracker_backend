@@ -12,10 +12,14 @@ type Claims struct {
 }
 
 func Sign(secret, uid string, ttl time.Duration) (string, error) {
+	now := time.Now().UTC()
+
 	claims := Claims{
 		UID: uid,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
 	}
 
@@ -28,6 +32,9 @@ func Parse(secret, token string, out *Claims) (*jwt.Token, error) {
 		token,
 		out,
 		func(t *jwt.Token) (any, error) {
+			if t.Method != jwt.SigningMethodHS256 {
+				return nil, jwt.ErrSignatureInvalid
+			}
 			return []byte(secret), nil
 		},
 	)

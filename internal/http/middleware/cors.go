@@ -1,9 +1,7 @@
-package httpx
+package middleware
 
 import "net/http"
 
-// CORSSimple provides a minimal CORS middleware suitable for single-user,
-// personal projects or trusted UI-only clients.
 func CORSSimple() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

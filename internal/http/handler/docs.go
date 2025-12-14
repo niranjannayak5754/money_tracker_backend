@@ -1,4 +1,4 @@
-package server
+package handler
 
 import (
 	"encoding/json"
@@ -9,8 +9,7 @@ import (
 )
 
 // GET /openapi.yaml
-func (c *Container) OpenAPI(w http.ResponseWriter, r *http.Request) {
-
+func OpenAPI(w http.ResponseWriter, r *http.Request) {
 	// disable caching in dev
 	if os.Getenv("APP_ENV") == "production" {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
