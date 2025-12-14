@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"log/slog"
+
 	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/user"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
@@ -12,12 +14,21 @@ import (
 )
 
 type AuthHandler struct {
-	svc user.Service
-	cfg config.Config
+	svc    user.Service
+	cfg    config.Config
+	logger *slog.Logger
 }
 
-func NewAuthHandler(svc user.Service, cfg config.Config) *AuthHandler {
-	return &AuthHandler{svc: svc, cfg: cfg}
+func NewAuthHandler(
+	svc user.Service,
+	cfg config.Config,
+	logger *slog.Logger,
+) *AuthHandler {
+	return &AuthHandler{
+		svc:    svc,
+		cfg:    cfg,
+		logger: logger.With("handler", "auth"),
+	}
 }
 
 // POST /auth/register
@@ -28,6 +39,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		h.logger.Warn("invalid register payload", "err", err)
 		response.BadReq(w, "invalid json")
 		return
 	}
@@ -37,6 +49,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Password: in.Password,
 	})
 	if err != nil {
+		h.logger.Warn(
+			"user registration failed",
+			"email", in.Email,
+			"err", err,
+		)
 		response.BadReq(w, err.Error())
 		return
 	}
@@ -55,12 +72,18 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		h.logger.Warn("invalid login payload", "err", err)
 		response.BadReq(w, "invalid json")
 		return
 	}
 
 	u, err := h.svc.Login(r.Context(), in.Email, in.Password)
 	if err != nil {
+		h.logger.Warn(
+			"login failed",
+			"email", in.Email,
+			"err", err,
+		)
 		response.Unauthorized(w, "invalid credentials")
 		return
 	}
@@ -71,6 +94,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		7*24*time.Hour,
 	)
 	if err != nil {
+		h.logger.Error(
+			"jwt signing failed",
+			"uid", u.ID.Hex(),
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}
@@ -89,6 +117,11 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	u, err := h.svc.GetByID(r.Context(), uid)
 	if err != nil {
+		h.logger.Warn(
+			"user not found",
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.NotFound(w)
 		return
 	}
@@ -102,6 +135,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 // POST /auth/logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// stateless JWT logout – nothing to invalidate
 	response.JSON(w, http.StatusOK, map[string]string{
 		"message": "logged out successfully",
 	})

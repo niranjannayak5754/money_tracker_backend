@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -15,10 +15,11 @@ import (
 
 type Server struct {
 	httpServer *http.Server
+	logger     *slog.Logger
 }
 
 // constructor
-func New(cfg config.Config, c *Container) *Server {
+func New(cfg config.Config, c *Container, logger *slog.Logger) *Server {
 	r := chi.NewRouter()
 
 	// global middleware
@@ -40,6 +41,7 @@ func New(cfg config.Config, c *Container) *Server {
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  60 * time.Second,
 		},
+		logger: logger,
 	}
 }
 
@@ -47,21 +49,29 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// Start HTTP server in goroutine
 	go func() {
-		log.Printf("HTTP server listening on %s", s.httpServer.Addr)
+		s.logger.Info(
+			"http server started",
+			"addr", s.httpServer.Addr,
+		)
 
 		if err := s.httpServer.ListenAndServe(); err != nil &&
 			err != http.ErrServerClosed {
-			log.Fatalf("http server error: %v", err)
+
+			s.logger.Error(
+				"http server error",
+				"err", err,
+			)
 		}
 	}()
 
-	// FUTURE: to add background workers
+	// FUTURE: background workers
 	// go s.runCronJobs(ctx)
 	// go s.runAsyncConsumers(ctx)
 
 	// Wait for shutdown signal
 	<-ctx.Done()
-	log.Println("shutdown signal received")
+
+	s.logger.Info("shutdown signal received")
 
 	shutdownCtx, cancel := context.WithTimeout(
 		context.Background(),

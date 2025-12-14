@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"log/slog"
+
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
@@ -14,11 +16,18 @@ import (
 )
 
 type ExpenseHandler struct {
-	svc expense.Service
+	svc    expense.Service
+	logger *slog.Logger
 }
 
-func NewExpenseHandler(svc expense.Service) *ExpenseHandler {
-	return &ExpenseHandler{svc: svc}
+func NewExpenseHandler(
+	svc expense.Service,
+	logger *slog.Logger,
+) *ExpenseHandler {
+	return &ExpenseHandler{
+		svc:    svc,
+		logger: logger.With("handler", "expense"),
+	}
 }
 
 // Routes() for /expenses
@@ -32,10 +41,6 @@ func (h *ExpenseHandler) Routes() http.Handler {
 
 	return r
 }
-
-//
-// HANDLERS
-//
 
 // POST /expenses
 func (h *ExpenseHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +59,7 @@ func (h *ExpenseHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		h.logger.Warn("invalid create expense payload", "err", err)
 		response.BadReq(w, "invalid json")
 		return
 	}
@@ -78,11 +84,17 @@ func (h *ExpenseHandler) create(w http.ResponseWriter, r *http.Request) {
 		Tags:       in.Tags,
 	})
 	if err != nil {
+		h.logger.Warn(
+			"create expense failed",
+			"uid", uid.Hex(),
+			"category_id", cid.Hex(),
+			"err", err,
+		)
 		response.BadReq(w, err.Error())
 		return
 	}
 
-	response.JSON(w, 201, out)
+	response.JSON(w, http.StatusCreated, out)
 }
 
 // GET /expenses?month=YYYY-MM&category=<id>
@@ -97,6 +109,13 @@ func (h *ExpenseHandler) list(w http.ResponseWriter, r *http.Request) {
 
 	items, err := h.svc.List(r.Context(), uid, month, category)
 	if err != nil {
+		h.logger.Error(
+			"list expenses failed",
+			"uid", uid.Hex(),
+			"month", month,
+			"category", category,
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}
@@ -105,7 +124,7 @@ func (h *ExpenseHandler) list(w http.ResponseWriter, r *http.Request) {
 		items = []expense.Model{}
 	}
 
-	response.JSON(w, 200, items)
+	response.JSON(w, http.StatusOK, items)
 }
 
 // PUT /expenses/{id}
@@ -115,8 +134,7 @@ func (h *ExpenseHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idHex := chi.URLParam(r, "id")
-	expID, err := primitive.ObjectIDFromHex(idHex)
+	expID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
 	if err != nil {
 		response.BadReq(w, "bad expense id")
 		return
@@ -132,6 +150,12 @@ func (h *ExpenseHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		h.logger.Warn(
+			"invalid update expense payload",
+			"expense_id", expID.Hex(),
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.BadReq(w, "invalid json")
 		return
 	}
@@ -153,6 +177,12 @@ func (h *ExpenseHandler) update(w http.ResponseWriter, r *http.Request) {
 		Tags:       in.Tags,
 	})
 	if err != nil {
+		h.logger.Error(
+			"update expense failed",
+			"expense_id", expID.Hex(),
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}
@@ -172,8 +202,7 @@ func (h *ExpenseHandler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idHex := chi.URLParam(r, "id")
-	expID, err := primitive.ObjectIDFromHex(idHex)
+	expID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
 	if err != nil {
 		response.BadReq(w, "bad expense id")
 		return
@@ -181,6 +210,12 @@ func (h *ExpenseHandler) delete(w http.ResponseWriter, r *http.Request) {
 
 	deleted, err := h.svc.Delete(r.Context(), uid, expID)
 	if err != nil {
+		h.logger.Error(
+			"delete expense failed",
+			"expense_id", expID.Hex(),
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}

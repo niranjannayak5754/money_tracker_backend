@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"log/slog"
+
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
@@ -14,14 +16,21 @@ import (
 )
 
 type IncomeHandler struct {
-	svc income.Service
+	svc    income.Service
+	logger *slog.Logger
 }
 
-func NewIncomeHandler(svc income.Service) *IncomeHandler {
-	return &IncomeHandler{svc: svc}
+func NewIncomeHandler(
+	svc income.Service,
+	logger *slog.Logger,
+) *IncomeHandler {
+	return &IncomeHandler{
+		svc:    svc,
+		logger: logger.With("handler", "income"),
+	}
 }
 
-// Public Routes for /income
+// Routes for /income
 func (h *IncomeHandler) Routes() http.Handler {
 	r := chi.NewRouter()
 
@@ -32,10 +41,6 @@ func (h *IncomeHandler) Routes() http.Handler {
 
 	return r
 }
-
-//
-// HANDLERS
-//
 
 // POST /income
 func (h *IncomeHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +57,7 @@ func (h *IncomeHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		h.logger.Warn("invalid create income payload", "err", err)
 		response.BadReq(w, "invalid json")
 		return
 	}
@@ -68,11 +74,16 @@ func (h *IncomeHandler) create(w http.ResponseWriter, r *http.Request) {
 		Notes:  in.Notes,
 	})
 	if err != nil {
+		h.logger.Error(
+			"create income failed",
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}
 
-	response.JSON(w, 201, rec)
+	response.JSON(w, http.StatusCreated, rec)
 }
 
 // GET /income?month=YYYY-MM
@@ -86,6 +97,12 @@ func (h *IncomeHandler) list(w http.ResponseWriter, r *http.Request) {
 
 	items, err := h.svc.List(r.Context(), uid, month)
 	if err != nil {
+		h.logger.Error(
+			"list income failed",
+			"uid", uid.Hex(),
+			"month", month,
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}
@@ -94,7 +111,7 @@ func (h *IncomeHandler) list(w http.ResponseWriter, r *http.Request) {
 		items = []income.Model{}
 	}
 
-	response.JSON(w, 200, items)
+	response.JSON(w, http.StatusOK, items)
 }
 
 // PUT /income/{id}
@@ -118,6 +135,12 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		h.logger.Warn(
+			"invalid update income payload",
+			"income_id", id.Hex(),
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.BadReq(w, "invalid json")
 		return
 	}
@@ -129,6 +152,12 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 		Notes:  in.Notes,
 	})
 	if err != nil {
+		h.logger.Error(
+			"update income failed",
+			"income_id", id.Hex(),
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}
@@ -156,6 +185,12 @@ func (h *IncomeHandler) delete(w http.ResponseWriter, r *http.Request) {
 
 	deleted, err := h.svc.Delete(r.Context(), uid, id)
 	if err != nil {
+		h.logger.Error(
+			"delete income failed",
+			"income_id", id.Hex(),
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}

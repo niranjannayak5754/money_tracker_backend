@@ -2,24 +2,25 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/logging"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/server"
 )
 
 func main() {
-	// Load configuration
+	logger := logging.New()
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("config load failed", "err", err)
+		os.Exit(1)
 	}
 
-	// Root context with OS signal handling
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
@@ -27,21 +28,18 @@ func main() {
 	)
 	defer stop()
 
-	// Mongo connection
 	mc, err := mongo.Connect(ctx, cfg.MongoURI)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("mongo connection failed", "err", err)
+		os.Exit(1)
 	}
 	defer mc.Disconnect(context.Background())
 
-	// Build DI container
-	container := server.BuildContainer(cfg, mc)
+	container := server.BuildContainer(cfg, mc, logger)
 
-	// HTTP server
-	srv := server.New(cfg, container)
+	srv := server.New(cfg, container, logger)
 
-	// Run server (blocks until ctx is done)
 	if err := srv.Run(ctx); err != nil {
-		log.Printf("server stopped with error: %v", err)
+		logger.Error("server stopped with error", "err", err)
 	}
 }

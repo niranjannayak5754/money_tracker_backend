@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"log/slog"
+
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
@@ -12,11 +14,18 @@ import (
 )
 
 type CategoryHandler struct {
-	svc category.Service
+	svc    category.Service
+	logger *slog.Logger
 }
 
-func NewCategoryHandler(svc category.Service) *CategoryHandler {
-	return &CategoryHandler{svc: svc}
+func NewCategoryHandler(
+	svc category.Service,
+	logger *slog.Logger,
+) *CategoryHandler {
+	return &CategoryHandler{
+		svc:    svc,
+		logger: logger.With("handler", "category"),
+	}
 }
 
 // Routes returns a chi.Router for /categories
@@ -30,10 +39,6 @@ func (h *CategoryHandler) Routes() http.Handler {
 	return r
 }
 
-//
-// HANDLERS
-//
-
 // GET /categories
 func (h *CategoryHandler) list(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUID(w, r)
@@ -43,6 +48,11 @@ func (h *CategoryHandler) list(w http.ResponseWriter, r *http.Request) {
 
 	items, err := h.svc.List(r.Context(), uid)
 	if err != nil {
+		h.logger.Error(
+			"list categories failed",
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}
@@ -51,7 +61,7 @@ func (h *CategoryHandler) list(w http.ResponseWriter, r *http.Request) {
 		items = []category.Model{}
 	}
 
-	response.JSON(w, 200, items)
+	response.JSON(w, http.StatusOK, items)
 }
 
 // POST /categories
@@ -63,10 +73,15 @@ func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
 
 	var in struct {
 		Name string `json:"name"`
-		Type string `json:"type"` // optional (expense|income)
+		Type string `json:"type"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Name == "" {
+		h.logger.Warn(
+			"invalid create category payload",
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.BadReq(w, "invalid json")
 		return
 	}
@@ -76,11 +91,17 @@ func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
 		Type: in.Type,
 	})
 	if err != nil {
+		h.logger.Warn(
+			"create category failed",
+			"uid", uid.Hex(),
+			"name", in.Name,
+			"err", err,
+		)
 		response.BadReq(w, err.Error())
 		return
 	}
 
-	response.JSON(w, 201, out)
+	response.JSON(w, http.StatusCreated, out)
 }
 
 // PUT /categories/{id}
@@ -90,8 +111,7 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idHex := chi.URLParam(r, "id")
-	catID, err := primitive.ObjectIDFromHex(idHex)
+	catID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
 	if err != nil {
 		response.BadReq(w, "bad category id")
 		return
@@ -103,15 +123,32 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		h.logger.Warn(
+			"invalid update category payload",
+			"category_id", catID.Hex(),
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.BadReq(w, "invalid json")
 		return
 	}
 
-	updated, err := h.svc.Update(r.Context(), uid, catID, category.UpdateInput{
-		Name:     in.Name,
-		Archived: in.Archived,
-	})
+	updated, err := h.svc.Update(
+		r.Context(),
+		uid,
+		catID,
+		category.UpdateInput{
+			Name:     in.Name,
+			Archived: in.Archived,
+		},
+	)
 	if err != nil {
+		h.logger.Error(
+			"update category failed",
+			"category_id", catID.Hex(),
+			"uid", uid.Hex(),
+			"err", err,
+		)
 		response.ServerErr(w, err)
 		return
 	}
