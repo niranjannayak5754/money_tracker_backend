@@ -1,0 +1,39 @@
+package response
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
+)
+
+func WriteError(w http.ResponseWriter, r *http.Request, err error) {
+	status := http.StatusInternalServerError
+	msg := "internal server error"
+
+	if ae, ok := apperr.AsAppError(err); ok {
+		msg = ae.Message
+
+		switch ae.Kind {
+		case apperr.Validation:
+			status = http.StatusBadRequest
+		case apperr.Unauthorized:
+			status = http.StatusUnauthorized
+		case apperr.Forbidden:
+			status = http.StatusForbidden
+		case apperr.NotFound:
+			status = http.StatusNotFound
+		case apperr.Conflict:
+			status = http.StatusConflict
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":      msg,
+		"request_id": requestctx.UID(r.Context()),
+	})
+}

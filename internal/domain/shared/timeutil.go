@@ -87,9 +87,9 @@ func MonthRange(month string) (time.Time, time.Time) {
 // ChooseDate normalizes zero time values to now.
 func ChooseDate(t time.Time) time.Time {
 	if t.IsZero() {
-		return time.Now()
+		return time.Now().UTC()
 	}
-	return t
+	return t.UTC()
 }
 
 // Decimal128ToFloat converts a MongoDB Decimal128 value into a float64.

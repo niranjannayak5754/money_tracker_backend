@@ -10,8 +10,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
+	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/expense"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
 )
 
@@ -30,7 +32,7 @@ func NewExpenseHandler(
 	}
 }
 
-// Routes() for /expenses
+// Routes for /expenses
 func (h *ExpenseHandler) Routes() http.Handler {
 	r := chi.NewRouter()
 
@@ -44,7 +46,7 @@ func (h *ExpenseHandler) Routes() http.Handler {
 
 // POST /expenses
 func (h *ExpenseHandler) create(w http.ResponseWriter, r *http.Request) {
-	uid, ok := mustUID(w, r)
+	userID, ok := mustUID(w, r)
 	if !ok {
 		return
 	}
@@ -59,47 +61,69 @@ func (h *ExpenseHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		h.logger.Warn("invalid create expense payload", "err", err)
-		response.BadReq(w, "invalid json")
+		appErr := apperr.ValidationErr("invalid json payload")
+
+		h.logger.Warn(
+			"expense.create invalid json",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", userID.Hex(),
+			"err", err,
+		)
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
 	if in.Amount <= 0 {
-		response.BadReq(w, "amount must be > 0")
+		response.WriteError(
+			w,
+			r,
+			apperr.ValidationErr("amount must be greater than zero"),
+		)
 		return
 	}
 
-	cid, err := primitive.ObjectIDFromHex(in.CategoryID)
+	categoryID, err := primitive.ObjectIDFromHex(in.CategoryID)
 	if err != nil {
-		response.BadReq(w, "invalid category id")
+		response.WriteError(
+			w,
+			r,
+			apperr.ValidationErr("invalid category_id"),
+		)
 		return
 	}
 
-	out, err := h.svc.Create(r.Context(), uid, expense.CreateInput{
-		Amount:     in.Amount,
-		Date:       shared.ChooseDate(in.Date.Time),
-		CategoryID: cid,
-		Merchant:   in.Merchant,
-		Notes:      in.Notes,
-		Tags:       in.Tags,
-	})
+	out, err := h.svc.Create(
+		r.Context(),
+		userID,
+		expense.CreateInput{
+			Amount:     in.Amount,
+			Date:       shared.ChooseDate(in.Date.Time),
+			CategoryID: categoryID,
+			Merchant:   in.Merchant,
+			Notes:      in.Notes,
+			Tags:       in.Tags,
+		},
+	)
 	if err != nil {
 		h.logger.Warn(
-			"create expense failed",
-			"uid", uid.Hex(),
-			"category_id", cid.Hex(),
+			"expense.create failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", userID.Hex(),
+			"category_id", categoryID.Hex(),
 			"err", err,
 		)
-		response.BadReq(w, err.Error())
+
+		response.WriteError(w, r, err)
 		return
 	}
 
 	response.JSON(w, http.StatusCreated, out)
 }
 
-// GET /expenses?month=YYYY-MM&category=<id>
+// GET /expenses
 func (h *ExpenseHandler) list(w http.ResponseWriter, r *http.Request) {
-	uid, ok := mustUID(w, r)
+	userID, ok := mustUID(w, r)
 	if !ok {
 		return
 	}
@@ -107,16 +131,18 @@ func (h *ExpenseHandler) list(w http.ResponseWriter, r *http.Request) {
 	month := r.URL.Query().Get("month")
 	category := r.URL.Query().Get("category")
 
-	items, err := h.svc.List(r.Context(), uid, month, category)
+	items, err := h.svc.List(r.Context(), userID, month, category)
 	if err != nil {
 		h.logger.Error(
-			"list expenses failed",
-			"uid", uid.Hex(),
+			"expense.list failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", userID.Hex(),
 			"month", month,
 			"category", category,
 			"err", err,
 		)
-		response.ServerErr(w, err)
+
+		response.WriteError(w, r, err)
 		return
 	}
 
@@ -129,14 +155,18 @@ func (h *ExpenseHandler) list(w http.ResponseWriter, r *http.Request) {
 
 // PUT /expenses/{id}
 func (h *ExpenseHandler) update(w http.ResponseWriter, r *http.Request) {
-	uid, ok := mustUID(w, r)
+	userID, ok := mustUID(w, r)
 	if !ok {
 		return
 	}
 
-	expID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
+	expenseID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
 	if err != nil {
-		response.BadReq(w, "bad expense id")
+		response.WriteError(
+			w,
+			r,
+			apperr.ValidationErr("invalid expense_id"),
+		)
 		return
 	}
 
@@ -150,45 +180,58 @@ func (h *ExpenseHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		appErr := apperr.ValidationErr("invalid json payload")
+
 		h.logger.Warn(
-			"invalid update expense payload",
-			"expense_id", expID.Hex(),
-			"uid", uid.Hex(),
+			"expense.update invalid json",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", userID.Hex(),
+			"expense_id", expenseID.Hex(),
 			"err", err,
 		)
-		response.BadReq(w, "invalid json")
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
-	var catID *primitive.ObjectID
+	var categoryID *primitive.ObjectID
 	if in.CategoryID != nil {
 		cid, err := primitive.ObjectIDFromHex(*in.CategoryID)
-		if err == nil {
-			catID = &cid
+		if err != nil {
+			response.WriteError(
+				w,
+				r,
+				apperr.ValidationErr("invalid category_id"),
+			)
+			return
 		}
+		categoryID = &cid
 	}
 
-	updated, err := h.svc.Update(r.Context(), uid, expID, expense.UpdateInput{
-		Amount:     in.Amount,
-		Date:       in.Date,
-		CategoryID: catID,
-		Merchant:   in.Merchant,
-		Notes:      in.Notes,
-		Tags:       in.Tags,
-	})
+	err = h.svc.Update(
+		r.Context(),
+		userID,
+		expenseID,
+		expense.UpdateInput{
+			Amount:     in.Amount,
+			Date:       in.Date,
+			CategoryID: categoryID,
+			Merchant:   in.Merchant,
+			Notes:      in.Notes,
+			Tags:       in.Tags,
+		},
+	)
+
 	if err != nil {
 		h.logger.Error(
-			"update expense failed",
-			"expense_id", expID.Hex(),
-			"uid", uid.Hex(),
+			"expense.update failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", userID.Hex(),
+			"expense_id", expenseID.Hex(),
 			"err", err,
 		)
-		response.ServerErr(w, err)
-		return
-	}
 
-	if !updated {
-		response.NotFound(w)
+		response.WriteError(w, r, err)
 		return
 	}
 
@@ -202,26 +245,27 @@ func (h *ExpenseHandler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
+	expenseID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
 	if err != nil {
-		response.BadReq(w, "bad expense id")
+		response.WriteError(
+			w,
+			r,
+			apperr.ValidationErr("invalid expense_id"),
+		)
 		return
 	}
 
-	deleted, err := h.svc.Delete(r.Context(), uid, expID)
+	err = h.svc.Delete(r.Context(), uid, expenseID)
 	if err != nil {
 		h.logger.Error(
-			"delete expense failed",
-			"expense_id", expID.Hex(),
-			"uid", uid.Hex(),
+			"expense.delete failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
+			"expense_id", expenseID.Hex(),
 			"err", err,
 		)
-		response.ServerErr(w, err)
-		return
-	}
 
-	if !deleted {
-		response.NotFound(w)
+		response.WriteError(w, r, err)
 		return
 	}
 

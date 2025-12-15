@@ -7,15 +7,16 @@ import (
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/summary"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 )
 
 type SummaryHandler struct {
-	svc    *summary.Service
+	svc    summary.Service
 	logger *slog.Logger
 }
 
 func NewSummaryHandler(
-	svc *summary.Service,
+	svc summary.Service,
 	logger *slog.Logger,
 ) *SummaryHandler {
 	return &SummaryHandler{
@@ -35,12 +36,13 @@ func (h *SummaryHandler) Get(w http.ResponseWriter, r *http.Request) {
 	out, err := h.svc.Get(r.Context(), uid, month)
 	if err != nil {
 		h.logger.Error(
-			"summary fetch failed",
-			"uid", uid.Hex(),
+			"summary.get failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
 			"month", month,
 			"err", err,
 		)
-		response.ServerErr(w, err)
+		response.WriteError(w, r, err)
 		return
 	}
 

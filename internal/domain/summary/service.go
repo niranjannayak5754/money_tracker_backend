@@ -2,43 +2,47 @@ package summary
 
 import (
 	"context"
-	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
+	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 )
 
-type Repository interface {
-	IncomeTotal(ctx context.Context, uid primitive.ObjectID, start, end time.Time) (float64, error)
-	ExpenseTotals(ctx context.Context, uid primitive.ObjectID, start, end time.Time) (float64, []map[string]any, error)
+type Service interface {
+	Get(ctx context.Context, userID primitive.ObjectID, month string) (Result, error)
 }
 
-type Service struct {
+type service struct {
 	repo Repository
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository) Service {
+	return &service{repo: repo}
 }
 
-func (s *Service) Get(ctx context.Context, uid primitive.ObjectID, month string) (map[string]any, error) {
+func (s *service) Get(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	month string,
+) (Result, error) {
+
 	start, end := shared.MonthRange(month)
 
-	incomeTotal, err := s.repo.IncomeTotal(ctx, uid, start, end)
+	incomeTotal, err := s.repo.IncomeTotal(ctx, userID, start, end)
 	if err != nil {
-		return nil, err
+		return Result{}, apperr.InternalErr("failed to calculate income total", err)
 	}
 
-	expTotal, catBreakdown, err := s.repo.ExpenseTotals(ctx, uid, start, end)
+	expenseTotal, breakdown, err := s.repo.ExpenseTotals(ctx, userID, start, end)
 	if err != nil {
-		return nil, err
+		return Result{}, apperr.InternalErr("failed to calculate expense totals", err)
 	}
 
-	return map[string]any{
-		"income_total":       incomeTotal,
-		"expense_total":      expTotal,
-		"savings":            incomeTotal - expTotal,
-		"category_breakdown": catBreakdown,
+	return Result{
+		IncomeTotal:       incomeTotal,
+		ExpenseTotal:      expenseTotal,
+		Savings:           incomeTotal - expenseTotal,
+		CategoryBreakdown: breakdown,
 	}, nil
 }

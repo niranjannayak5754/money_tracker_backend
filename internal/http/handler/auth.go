@@ -7,8 +7,10 @@ import (
 
 	"log/slog"
 
+	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/user"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/security"
 )
@@ -39,28 +41,37 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		h.logger.Warn("invalid register payload", "err", err)
-		response.BadReq(w, "invalid json")
+		appErr := apperr.ValidationErr("invalid json payload")
+
+		h.logger.Warn(
+			"auth.register invalid payload",
+			"request_id", requestctx.UID(r.Context()),
+			"err", err,
+		)
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
-	out, err := h.svc.Register(r.Context(), user.RegisterInput{
+	u, err := h.svc.Register(r.Context(), user.RegisterInput{
 		Email:    in.Email,
 		Password: in.Password,
 	})
 	if err != nil {
 		h.logger.Warn(
-			"user registration failed",
+			"auth.register failed",
+			"request_id", requestctx.UID(r.Context()),
 			"email", in.Email,
 			"err", err,
 		)
-		response.BadReq(w, err.Error())
+
+		response.WriteError(w, r, err)
 		return
 	}
 
 	response.JSON(w, http.StatusCreated, map[string]any{
-		"id":    out.ID.Hex(),
-		"email": out.Email,
+		"id":    u.ID.Hex(),
+		"email": u.Email,
 	})
 }
 
@@ -72,39 +83,55 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		h.logger.Warn("invalid login payload", "err", err)
-		response.BadReq(w, "invalid json")
+		appErr := apperr.ValidationErr("invalid json payload")
+
+		h.logger.Warn(
+			"auth.login invalid payload",
+			"request_id", requestctx.UID(r.Context()),
+			"err", err,
+		)
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
 	u, err := h.svc.Login(r.Context(), in.Email, in.Password)
 	if err != nil {
+		// SECURITY: collapse all login failures
+		appErr := apperr.UnauthorizedErr("invalid credentials")
+
 		h.logger.Warn(
-			"login failed",
+			"auth.login failed",
+			"request_id", requestctx.UID(r.Context()),
 			"email", in.Email,
 			"err", err,
 		)
-		response.Unauthorized(w, "invalid credentials")
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
-	tok, err := security.Sign(
+	token, err := security.Sign(
 		h.cfg.JWTSecret,
 		u.ID.Hex(),
 		7*24*time.Hour,
 	)
 	if err != nil {
+		appErr := apperr.InternalErr("failed to issue access token", err)
+
 		h.logger.Error(
-			"jwt signing failed",
-			"uid", u.ID.Hex(),
+			"auth.login jwt signing failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", u.ID.Hex(),
 			"err", err,
 		)
-		response.ServerErr(w, err)
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{
-		"access_token": tok,
+		"access_token": token,
 	})
 }
 
@@ -118,11 +145,13 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	u, err := h.svc.GetByID(r.Context(), uid)
 	if err != nil {
 		h.logger.Warn(
-			"user not found",
-			"uid", uid.Hex(),
+			"auth.me user not found",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
 			"err", err,
 		)
-		response.NotFound(w)
+
+		response.WriteError(w, r, err)
 		return
 	}
 
@@ -135,7 +164,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 // POST /auth/logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	// stateless JWT logout – nothing to invalidate
+	// Stateless JWT logout — client just discards token
 	response.JSON(w, http.StatusOK, map[string]string{
 		"message": "logged out successfully",
 	})

@@ -2,52 +2,20 @@ package income
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
+	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 )
 
-var (
-	ErrInvalidAmount = errors.New("amount must be greater than zero")
-	ErrDecodeAmount  = errors.New("invalid amount format")
-)
-
-type Model struct {
-	ID        primitive.ObjectID   `bson:"_id" json:"id"`
-	UserID    primitive.ObjectID   `bson:"user_id" json:"user_id"`
-	Amount    primitive.Decimal128 `bson:"amount" json:"-"`
-	AmountF   float64              `bson:"-" json:"amount"`
-	Date      time.Time            `bson:"date" json:"date"`
-	Source    string               `bson:"source,omitempty" json:"source,omitempty"`
-	Notes     string               `bson:"notes,omitempty" json:"notes,omitempty"`
-	CreatedAt time.Time            `bson:"created_at" json:"created_at"`
-	UpdatedAt time.Time            `bson:"updated_at" json:"updated_at"`
-}
-
-//
-// REPOSITORY
-//
-
-type Repository interface {
-	Create(ctx any, m Model) error
-	ListMonth(ctx any, uid primitive.ObjectID, start, end time.Time) ([]Model, error)
-	Update(ctx any, uid, id primitive.ObjectID, set map[string]any) (bool, error)
-	Delete(ctx any, uid, id primitive.ObjectID) (bool, error)
-}
-
-//
-// SERVICE INTERFACE (domain only)
-//
-
 type Service interface {
-	Create(ctx context.Context, userID primitive.ObjectID, input CreateInput) (Model, error)
+	Create(ctx context.Context, userID primitive.ObjectID, in CreateInput) (Model, error)
 	List(ctx context.Context, userID primitive.ObjectID, month string) ([]Model, error)
-	Update(ctx context.Context, userID, id primitive.ObjectID, input UpdateInput) (bool, error)
-	Delete(ctx context.Context, userID, id primitive.ObjectID) (bool, error)
+	Update(ctx context.Context, userID, id primitive.ObjectID, in UpdateInput) error
+	Delete(ctx context.Context, userID, id primitive.ObjectID) error
 }
 
 type service struct {
@@ -57,10 +25,6 @@ type service struct {
 func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
-
-//
-// INPUT DTOs
-//
 
 type CreateInput struct {
 	Amount float64
@@ -76,45 +40,57 @@ type UpdateInput struct {
 	Notes  *string
 }
 
-//
-// BUSINESS LOGIC
-//
+func (s *service) Create(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	in CreateInput,
+) (Model, error) {
 
-func (s *service) Create(ctx context.Context, uid primitive.ObjectID, in CreateInput) (Model, error) {
 	if in.Amount <= 0 {
-		return Model{}, ErrInvalidAmount
+		return Model{}, apperr.ValidationErr("amount must be greater than zero")
 	}
 
 	dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", in.Amount))
 	if err != nil {
-		return Model{}, ErrDecodeAmount
+		return Model{}, apperr.InternalErr("invalid amount format", err)
 	}
+
+	now := time.Now().UTC()
 
 	rec := Model{
 		ID:        primitive.NewObjectID(),
-		UserID:    uid,
+		UserID:    userID,
 		Amount:    dec,
 		AmountF:   in.Amount,
 		Date:      shared.ChooseDate(in.Date),
 		Source:    in.Source,
 		Notes:     in.Notes,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	if err := s.repo.Create(ctx, rec); err != nil {
-		return Model{}, err
+		return Model{}, apperr.InternalErr("failed to create income", err)
 	}
 
 	return rec, nil
 }
 
-func (s *service) List(ctx context.Context, uid primitive.ObjectID, month string) ([]Model, error) {
+func (s *service) List(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	month string,
+) ([]Model, error) {
+
 	start, end := shared.MonthRange(month)
 
-	items, err := s.repo.ListMonth(ctx, uid, start, end)
+	items, err := s.repo.ListByMonth(ctx, userID, start, end)
 	if err != nil {
-		return nil, err
+		return nil, apperr.InternalErr("failed to list income", err)
+	}
+
+	if items == nil {
+		return []Model{}, nil
 	}
 
 	for i := range items {
@@ -124,34 +100,61 @@ func (s *service) List(ctx context.Context, uid primitive.ObjectID, month string
 	return items, nil
 }
 
-func (s *service) Update(ctx context.Context, uid, id primitive.ObjectID, in UpdateInput) (bool, error) {
+func (s *service) Update(
+	ctx context.Context,
+	userID, id primitive.ObjectID,
+	in UpdateInput,
+) error {
+
 	set := map[string]any{
-		"updated_at": time.Now(),
+		"updated_at": time.Now().UTC(),
 	}
 
 	if in.Amount != nil {
-		dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", *in.Amount))
+		if *in.Amount <= 0 {
+			return apperr.ValidationErr("amount must be greater than zero")
+		}
+
+		dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", in.Amount))
 		if err != nil {
-			return false, ErrDecodeAmount
+			return apperr.InternalErr("invalid amount format", err)
 		}
 		set["amount"] = dec
 	}
 
 	if in.Date != nil {
-		set["date"] = *in.Date
+		set["date"] = shared.ChooseDate(*in.Date)
 	}
-
 	if in.Source != nil {
 		set["source"] = *in.Source
 	}
-
 	if in.Notes != nil {
 		set["notes"] = *in.Notes
 	}
 
-	return s.repo.Update(ctx, uid, id, set)
+	updated, err := s.repo.Update(ctx, userID, id, set)
+	if err != nil {
+		return apperr.InternalErr("failed to update income", err)
+	}
+	if !updated {
+		return apperr.NotFoundErr("income not found")
+	}
+
+	return nil
 }
 
-func (s *service) Delete(ctx context.Context, uid, id primitive.ObjectID) (bool, error) {
-	return s.repo.Delete(ctx, uid, id)
+func (s *service) Delete(
+	ctx context.Context,
+	userID, id primitive.ObjectID,
+) error {
+
+	deleted, err := s.repo.Delete(ctx, userID, id)
+	if err != nil {
+		return apperr.InternalErr("failed to delete income", err)
+	}
+	if !deleted {
+		return apperr.NotFoundErr("income not found")
+	}
+
+	return nil
 }

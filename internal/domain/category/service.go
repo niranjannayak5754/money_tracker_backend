@@ -2,40 +2,34 @@ package category
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 )
 
-var (
-	ErrInvalidName = errors.New("category name is required")
-	ErrInvalidType = errors.New("invalid category type")
-)
-
-type Model struct {
-	ID        primitive.ObjectID `bson:"_id" json:"id"`
-	UserID    primitive.ObjectID `bson:"user_id" json:"user_id"`
-	Name      string             `bson:"name" json:"name"`
-	Type      string             `bson:"type" json:"type"` // expense|income
-	Archived  bool               `bson:"archived" json:"archived"`
-	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
-}
-
-type Repository interface {
-	Create(ctx any, m Model) error
-	Update(ctx any, userID, id primitive.ObjectID, set map[string]any) (bool, error)
-	ListActive(ctx any, userID primitive.ObjectID) ([]Model, error)
-	ExistsForUser(rctx any, uid, categoryID primitive.ObjectID) (bool, error)
-}
-
-// SERVICE INTERFACE (business logic only)
+// SERVICE INTERFACE
 type Service interface {
-	List(ctx context.Context, userID primitive.ObjectID) ([]Model, error)
-	Create(ctx context.Context, userID primitive.ObjectID, input CreateInput) (Model, error)
-	Update(ctx context.Context, userID, categoryID primitive.ObjectID, input UpdateInput) (bool, error)
+	List(
+		ctx context.Context,
+		userID primitive.ObjectID,
+	) ([]Model, error)
+
+	Create(
+		ctx context.Context,
+		userID primitive.ObjectID,
+		in CreateInput,
+	) (Model, error)
+
+	Update(
+		ctx context.Context,
+		userID, categoryID primitive.ObjectID,
+		in UpdateInput,
+	) (bool, error)
 }
 
+// SERVICE IMPLEMENTATION (PRIVATE)
 type service struct {
 	repo Repository
 }
@@ -44,13 +38,10 @@ func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
 
-//
 // INPUT STRUCTS
-//
-
 type CreateInput struct {
 	Name string
-	Type string // optional, default "expense"
+	Type string // expense | income (optional, default expense)
 }
 
 type UpdateInput struct {
@@ -58,17 +49,26 @@ type UpdateInput struct {
 	Archived *bool
 }
 
-//
 // BUSINESS LOGIC
-//
 
-func (s *service) List(ctx context.Context, userID primitive.ObjectID) ([]Model, error) {
+// List returns all active categories for a user
+func (s *service) List(
+	ctx context.Context,
+	userID primitive.ObjectID,
+) ([]Model, error) {
+
 	return s.repo.ListActive(ctx, userID)
 }
 
-func (s *service) Create(ctx context.Context, userID primitive.ObjectID, in CreateInput) (Model, error) {
+// Create creates a new category with validation
+func (s *service) Create(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	in CreateInput,
+) (Model, error) {
+
 	if in.Name == "" {
-		return Model{}, ErrInvalidName
+		return Model{}, apperr.ValidationErr("category name is required")
 	}
 
 	kind := in.Type
@@ -77,7 +77,7 @@ func (s *service) Create(ctx context.Context, userID primitive.ObjectID, in Crea
 	}
 
 	if kind != "expense" && kind != "income" {
-		return Model{}, ErrInvalidType
+		return Model{}, apperr.ValidationErr("invalid category type")
 	}
 
 	cat := Model{
@@ -86,22 +86,31 @@ func (s *service) Create(ctx context.Context, userID primitive.ObjectID, in Crea
 		Name:      in.Name,
 		Type:      kind,
 		Archived:  false,
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
 	}
 
 	if err := s.repo.Create(ctx, cat); err != nil {
-		return Model{}, err
+		return Model{}, apperr.InternalErr(
+			"failed to create category",
+			err,
+		)
 	}
 
 	return cat, nil
 }
 
-func (s *service) Update(ctx context.Context, userID, id primitive.ObjectID, in UpdateInput) (bool, error) {
+// Update updates name and/or archived flag for a category
+func (s *service) Update(
+	ctx context.Context,
+	userID, categoryID primitive.ObjectID,
+	in UpdateInput,
+) (bool, error) {
+
 	set := map[string]any{}
 
 	if in.Name != nil {
 		if *in.Name == "" {
-			return false, ErrInvalidName
+			return false, apperr.ValidationErr("category name cannot be empty")
 		}
 		set["name"] = *in.Name
 	}
@@ -110,5 +119,17 @@ func (s *service) Update(ctx context.Context, userID, id primitive.ObjectID, in 
 		set["archived"] = *in.Archived
 	}
 
-	return s.repo.Update(ctx, userID, id, set)
+	if len(set) == 0 {
+		return false, apperr.ValidationErr("no fields to update")
+	}
+
+	ok, err := s.repo.Update(ctx, userID, categoryID, set)
+	if err != nil {
+		return false, apperr.InternalErr(
+			"failed to update category",
+			err,
+		)
+	}
+
+	return ok, nil
 }

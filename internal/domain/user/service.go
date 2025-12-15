@@ -2,44 +2,17 @@ package user
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 )
-
-var (
-	ErrInvalidEmail    = errors.New("invalid email")
-	ErrInvalidPassword = errors.New("password must be at least 6 characters")
-	ErrUserNotFound    = errors.New("user not found")
-	ErrBadCredentials  = errors.New("invalid credentials")
-)
-
-type Model struct {
-	ID        primitive.ObjectID `bson:"_id" json:"id"`
-	Email     string             `bson:"email" json:"email"`
-	PassHash  []byte             `bson:"pass_hash" json:"-"`
-	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
-}
-
-//
-// Repository
-//
-
-type Repository interface {
-	Insert(ctx any, u Model) error
-	FindByEmail(ctx any, email string) (*Model, error)
-	FindByID(ctx any, id primitive.ObjectID) (*Model, error)
-}
-
-//
-// Service interface (domain business logic only)
-//
 
 type Service interface {
-	Register(ctx context.Context, input RegisterInput) (Model, error)
+	Register(ctx context.Context, in RegisterInput) (Model, error)
 	Login(ctx context.Context, email, password string) (*Model, error)
 	GetByID(ctx context.Context, id primitive.ObjectID) (*Model, error)
 }
@@ -52,68 +25,78 @@ func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
 
-//
-// Input DTOs
-//
-
 type RegisterInput struct {
 	Email    string
 	Password string
 }
 
-//
-// Business Logic
-//
+func (s *service) Register(
+	ctx context.Context,
+	in RegisterInput,
+) (Model, error) {
 
-func (s *service) Register(ctx context.Context, in RegisterInput) (Model, error) {
 	email := strings.ToLower(strings.TrimSpace(in.Email))
-
 	if email == "" || !strings.Contains(email, "@") {
-		return Model{}, ErrInvalidEmail
+		return Model{}, apperr.ValidationErr("invalid email")
 	}
 
 	if len(in.Password) < 6 {
-		return Model{}, ErrInvalidPassword
+		return Model{}, apperr.ValidationErr("password must be at least 6 characters")
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword(
+		[]byte(in.Password),
+		bcrypt.DefaultCost,
+	)
 	if err != nil {
-		return Model{}, err
+		return Model{}, apperr.InternalErr("password hashing failed", err)
 	}
 
 	u := Model{
 		ID:        primitive.NewObjectID(),
 		Email:     email,
 		PassHash:  hash,
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
 	}
 
-	if err := s.repo.Insert(ctx, u); err != nil {
-		return Model{}, err
+	if err := s.repo.Create(ctx, u); err != nil {
+		return Model{}, apperr.ConflictErr("email already registered")
 	}
 
 	return u, nil
 }
 
-func (s *service) Login(ctx context.Context, email, password string) (*Model, error) {
+func (s *service) Login(
+	ctx context.Context,
+	email, password string,
+) (*Model, error) {
+
 	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || password == "" {
+		return nil, apperr.ValidationErr("email and password required")
+	}
 
 	u, err := s.repo.FindByEmail(ctx, email)
 	if err != nil {
-		return nil, ErrBadCredentials
+		return nil, apperr.UnauthorizedErr("invalid credentials")
 	}
 
 	if bcrypt.CompareHashAndPassword(u.PassHash, []byte(password)) != nil {
-		return nil, ErrBadCredentials
+		return nil, apperr.UnauthorizedErr("invalid credentials")
 	}
 
 	return u, nil
 }
 
-func (s *service) GetByID(ctx context.Context, id primitive.ObjectID) (*Model, error) {
+func (s *service) GetByID(
+	ctx context.Context,
+	id primitive.ObjectID,
+) (*Model, error) {
+
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, ErrUserNotFound
+		return nil, apperr.NotFoundErr("user not found")
 	}
+
 	return u, nil
 }

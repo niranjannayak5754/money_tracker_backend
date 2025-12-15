@@ -10,8 +10,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
+	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
 )
 
@@ -57,29 +59,51 @@ func (h *IncomeHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		h.logger.Warn("invalid create income payload", "err", err)
-		response.BadReq(w, "invalid json")
+		appErr := apperr.ValidationErr("invalid json payload")
+
+		h.logger.Warn(
+			"income.create invalid payload",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
+			"err", err,
+		)
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
 	if in.Amount <= 0 {
-		response.BadReq(w, "amount must be > 0")
+		appErr := apperr.ValidationErr("amount must be > 0")
+
+		h.logger.Warn(
+			"income.create invalid amount",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
+		)
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
-	rec, err := h.svc.Create(r.Context(), uid, income.CreateInput{
-		Amount: in.Amount,
-		Date:   shared.ChooseDate(in.Date.Time),
-		Source: in.Source,
-		Notes:  in.Notes,
-	})
+	rec, err := h.svc.Create(
+		r.Context(),
+		uid,
+		income.CreateInput{
+			Amount: in.Amount,
+			Date:   shared.ChooseDate(in.Date.Time),
+			Source: in.Source,
+			Notes:  in.Notes,
+		},
+	)
 	if err != nil {
 		h.logger.Error(
-			"create income failed",
-			"uid", uid.Hex(),
+			"income.create failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
 			"err", err,
 		)
-		response.ServerErr(w, err)
+
+		response.WriteError(w, r, err)
 		return
 	}
 
@@ -98,12 +122,14 @@ func (h *IncomeHandler) list(w http.ResponseWriter, r *http.Request) {
 	items, err := h.svc.List(r.Context(), uid, month)
 	if err != nil {
 		h.logger.Error(
-			"list income failed",
-			"uid", uid.Hex(),
+			"income.list failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
 			"month", month,
 			"err", err,
 		)
-		response.ServerErr(w, err)
+
+		response.WriteError(w, r, err)
 		return
 	}
 
@@ -121,9 +147,18 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
+	incomeID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
 	if err != nil {
-		response.BadReq(w, "bad id")
+		appErr := apperr.ValidationErr("invalid income id")
+
+		h.logger.Warn(
+			"income.update invalid id",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
+			"err", err,
+		)
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
@@ -135,35 +170,42 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		appErr := apperr.ValidationErr("invalid json payload")
+
 		h.logger.Warn(
-			"invalid update income payload",
-			"income_id", id.Hex(),
-			"uid", uid.Hex(),
+			"income.update invalid payload",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
+			"income_id", incomeID.Hex(),
 			"err", err,
 		)
-		response.BadReq(w, "invalid json")
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
-	updated, err := h.svc.Update(r.Context(), uid, id, income.UpdateInput{
-		Amount: in.Amount,
-		Date:   in.Date,
-		Source: in.Source,
-		Notes:  in.Notes,
-	})
+	err = h.svc.Update(
+		r.Context(),
+		uid,
+		incomeID,
+		income.UpdateInput{
+			Amount: in.Amount,
+			Date:   in.Date,
+			Source: in.Source,
+			Notes:  in.Notes,
+		},
+	)
+
 	if err != nil {
 		h.logger.Error(
-			"update income failed",
-			"income_id", id.Hex(),
-			"uid", uid.Hex(),
+			"income.update failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
+			"income_id", incomeID.Hex(),
 			"err", err,
 		)
-		response.ServerErr(w, err)
-		return
-	}
 
-	if !updated {
-		response.NotFound(w)
+		response.WriteError(w, r, err)
 		return
 	}
 
@@ -177,26 +219,32 @@ func (h *IncomeHandler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
+	incomeID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
 	if err != nil {
-		response.BadReq(w, "bad id")
-		return
-	}
+		appErr := apperr.ValidationErr("invalid income id")
 
-	deleted, err := h.svc.Delete(r.Context(), uid, id)
-	if err != nil {
-		h.logger.Error(
-			"delete income failed",
-			"income_id", id.Hex(),
-			"uid", uid.Hex(),
+		h.logger.Warn(
+			"income.delete invalid id",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
 			"err", err,
 		)
-		response.ServerErr(w, err)
+
+		response.WriteError(w, r, appErr)
 		return
 	}
 
-	if !deleted {
-		response.NotFound(w)
+	err = h.svc.Delete(r.Context(), uid, incomeID)
+	if err != nil {
+		h.logger.Error(
+			"income.delete failed",
+			"request_id", requestctx.UID(r.Context()),
+			"user_id", uid.Hex(),
+			"income_id", incomeID.Hex(),
+			"err", err,
+		)
+
+		response.WriteError(w, r, err)
 		return
 	}
 
