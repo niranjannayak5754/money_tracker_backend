@@ -7,6 +7,22 @@ info:
 servers:
   - url: /
 
+tags:
+  - name: health
+    description: Health and diagnostics
+  - name: auth
+    description: Authentication and account operations
+  - name: profile
+    description: Profile-related endpoints for the authenticated user
+  - name: category
+    description: Category management (income/expense categories)
+  - name: income
+    description: Income entries
+  - name: expenses
+    description: Expense entries
+  - name: summary
+    description: Reporting and summaries
+
 components:
   securitySchemes:
     bearerAuth:
@@ -17,6 +33,7 @@ components:
 paths:
   /health:
     get:
+      tags: [health]
       summary: Health check
       responses:
         '200':
@@ -24,6 +41,7 @@ paths:
 
   /auth/register:
     post:
+      tags: [auth]
       summary: Register new user
       requestBody:
         required: true
@@ -41,6 +59,7 @@ paths:
 
   /auth/login:
     post:
+      tags: [auth]
       summary: Login user and get JWT access token
       requestBody:
         required: true
@@ -65,6 +84,7 @@ paths:
 
   /auth/me:
     get:
+      tags: [profile]
       summary: Fetch authenticated user's profile
       security:
         - bearerAuth: []
@@ -74,6 +94,7 @@ paths:
 
   /auth/logout:
     post:
+      tags: [auth]
       summary: Logout user (invalidate token)
       security:
         - bearerAuth: []
@@ -81,8 +102,28 @@ paths:
         '200':
           description: Logged out
 
+  /auth/reset-password:
+    post:
+      tags: [profile]
+      summary: reset authenticated user's password
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_password]
+              properties:
+                new_password: { type: string, minLength: 6 }
+      responses:
+        '200':
+          description: Password changed successfully
+
   /categories:
     get:
+      tags: [category]
       summary: List categories
       security:
         - bearerAuth: []
@@ -101,6 +142,7 @@ paths:
         '200':
           description: OK
     post:
+      tags: [category]
       summary: Create category
       security:
         - bearerAuth: []
@@ -122,6 +164,7 @@ paths:
 
   /categories/{id}:
     put:
+      tags: [category]
       summary: Update category
       security:
         - bearerAuth: []
@@ -146,6 +189,7 @@ paths:
 
   /income:
     get:
+      tags: [income]
       summary: List income entries for month
       security:
         - bearerAuth: []
@@ -156,6 +200,7 @@ paths:
       responses:
         '200': { description: OK }
     post:
+      tags: [income]
       summary: Add income entry
       security:
         - bearerAuth: []
@@ -176,6 +221,7 @@ paths:
 
   /expenses:
     get:
+      tags: [expenses]
       summary: List expenses for month
       security:
         - bearerAuth: []
@@ -189,6 +235,7 @@ paths:
       responses: { '200': { description: OK } }
 
     post:
+      tags: [expenses]
       summary: Add expense entry
       security:
         - bearerAuth: []
@@ -213,6 +260,7 @@ paths:
 
   /expenses/{id}:
     put:
+      tags: [expenses]
       summary: Update expense
       security:
         - bearerAuth: []
@@ -224,6 +272,7 @@ paths:
       responses:
         '200': { description: Updated }
     delete:
+      tags: [expenses]
       summary: Delete expense
       security:
         - bearerAuth: []
@@ -237,6 +286,7 @@ paths:
 
   /summary:
     get:
+      tags: [summary]
       summary: Monthly income/expense summary
       security:
         - bearerAuth: []

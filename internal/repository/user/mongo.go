@@ -91,3 +91,25 @@ func (m *MongoRepo) FindByID(
 
 	return &out, nil
 }
+
+func (m *MongoRepo) UpdatePasswordHash(
+	ctx context.Context,
+	id primitive.ObjectID,
+	hash []byte,
+) error {
+	res, err := m.col.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"pass_hash": hash}})
+	if err != nil {
+		m.logger.Error(
+			"mongo update password_hash failed",
+			"uid", id.Hex(),
+			"err", err,
+		)
+		return err
+	}
+
+	if res.MatchedCount == 0 {
+		return repository.ErrNotFound
+	}
+
+	return nil
+}

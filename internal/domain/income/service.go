@@ -115,7 +115,7 @@ func (s *service) Update(
 			return apperr.ValidationErr("amount must be greater than zero")
 		}
 
-		dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", in.Amount))
+		dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", *in.Amount))
 		if err != nil {
 			return apperr.InternalErr("invalid amount format", err)
 		}

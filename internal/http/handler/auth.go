@@ -147,3 +147,34 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		"message": "logged out successfully",
 	})
 }
+
+// POST /auth/reset-password
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
+
+	var in struct {
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		response.BadReq(w, "invalid json payload")
+		return
+	}
+
+	if err := h.svc.ResetPassword(r.Context(), uid, in.NewPassword); err != nil {
+		h.logger.Warn(
+			"auth.reset_password failed",
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", uid.Hex(),
+			"err", err,
+		)
+
+		response.WriteError(w, r, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "password changed successfully"})
+}

@@ -22,6 +22,7 @@ func RegisterRoutesV2(r chi.Router, c *Container) {
 		r.Post("/login", c.AuthH.Login)
 		r.With(c.AuthMw.RequireAuth).Get("/me", c.AuthH.Me)
 		r.With(c.AuthMw.RequireAuth).Post("/logout", c.AuthH.Logout)
+		r.With(c.AuthMw.RequireAuth).Post("/reset-password", c.AuthH.ResetPassword)
 	})
 
 	// protected routes

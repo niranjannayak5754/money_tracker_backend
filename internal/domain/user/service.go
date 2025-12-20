@@ -9,6 +9,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 )
 
@@ -16,6 +17,7 @@ type Service interface {
 	Register(ctx context.Context, in RegisterInput) (Model, error)
 	Login(ctx context.Context, email, password string) (*Model, error)
 	GetByID(ctx context.Context, id primitive.ObjectID) (*Model, error)
+	ResetPassword(ctx context.Context, id primitive.ObjectID, newPassword string) error
 }
 
 type service struct {
@@ -106,4 +108,40 @@ func (s *service) GetByID(
 	}
 
 	return u, nil
+}
+
+func (s *service) ResetPassword(
+	ctx context.Context,
+	id primitive.ObjectID,
+	newPassword string,
+) error {
+	if newPassword == "" {
+		return apperr.ValidationErr("new password required")
+	}
+
+	if len(newPassword) < config.SIX {
+		return apperr.ValidationErr("password must be at least 6 characters")
+	}
+
+	_, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		if repository.DataNotFoundErr(err) {
+			return apperr.NotFoundErr("user not found")
+		}
+		return apperr.InternalErr("change password error", err)
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return apperr.InternalErr("password hashing failed", err)
+	}
+
+	if err := s.repo.UpdatePasswordHash(ctx, id, newHash); err != nil {
+		if repository.DataNotFoundErr(err) {
+			return apperr.NotFoundErr("user not found")
+		}
+		return apperr.InternalErr("update password failed", err)
+	}
+
+	return nil
 }
