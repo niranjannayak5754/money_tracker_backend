@@ -36,7 +36,7 @@ func (m *mongoRepo) Create(
 	if err != nil {
 		m.logger.Error(
 			"mongo insert failed",
-			"request_id", requestctx.UID(ctx),
+			"request_id", requestctx.RequestID(ctx),
 			"user_id", exp.UserID.Hex(),
 			"err", err,
 		)
@@ -71,8 +71,8 @@ func (m *mongoRepo) ListByMonth(
 	if err != nil {
 		m.logger.Error(
 			"mongo find failed",
-			"request_id", requestctx.UID(ctx),
-			"user_id", userID.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID.Hex(),
 			"err", err,
 		)
 		return nil, err
@@ -85,8 +85,8 @@ func (m *mongoRepo) ListByMonth(
 		if err := cur.Decode(&exp); err != nil {
 			m.logger.Error(
 				"mongo decode failed",
-				"request_id", requestctx.UID(ctx),
-				"user_id", userID.Hex(),
+				"request_id", requestctx.RequestID(ctx),
+				"uid", userID.Hex(),
 				"err", err,
 			)
 			return nil, err
@@ -97,8 +97,8 @@ func (m *mongoRepo) ListByMonth(
 	if err := cur.Err(); err != nil {
 		m.logger.Error(
 			"mongo cursor error",
-			"request_id", requestctx.UID(ctx),
-			"user_id", userID.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID.Hex(),
 			"err", err,
 		)
 		return nil, err
@@ -126,8 +126,8 @@ func (m *mongoRepo) Update(
 	if err != nil {
 		m.logger.Error(
 			"mongo update failed",
-			"request_id", requestctx.UID(ctx),
-			"user_id", userID.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID.Hex(),
 			"expense_id", id.Hex(),
 			"err", err,
 		)
@@ -153,8 +153,8 @@ func (m *mongoRepo) Delete(
 	if err != nil {
 		m.logger.Error(
 			"mongo delete failed",
-			"request_id", requestctx.UID(ctx),
-			"user_id", userID.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID.Hex(),
 			"expense_id", id.Hex(),
 			"err", err,
 		)

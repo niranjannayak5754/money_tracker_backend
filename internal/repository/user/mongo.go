@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/user"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 )
 
 type MongoRepo struct {
@@ -35,7 +36,7 @@ func (m *MongoRepo) Create(
 	if err != nil {
 		m.logger.Error(
 			"insert user failed",
-			"user_id", u.ID.Hex(),
+			"uid", u.ID.Hex(),
 			"email", u.Email,
 			"err", err,
 		)
@@ -53,8 +54,12 @@ func (m *MongoRepo) FindByEmail(
 	var out user.Model
 	err := m.col.FindOne(ctx, bson.M{"email": email}).Decode(&out)
 	if err != nil {
-		m.logger.Warn(
-			"user not found by email",
+		if err == mongo.ErrNoDocuments {
+			return nil, repository.ErrNotFound
+		}
+
+		m.logger.Error(
+			"mongo find user by email failed",
 			"email", email,
 			"err", err,
 		)
@@ -72,9 +77,13 @@ func (m *MongoRepo) FindByID(
 	var out user.Model
 	err := m.col.FindOne(ctx, bson.M{"_id": id}).Decode(&out)
 	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, repository.ErrNotFound
+		}
+
 		m.logger.Warn(
-			"user not found by id",
-			"user_id", id.Hex(),
+			"mongo find user by id failed",
+			"uid", id.Hex(),
 			"err", err,
 		)
 		return nil, err

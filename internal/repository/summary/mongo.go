@@ -31,13 +31,13 @@ func New(
 	}
 }
 
-func (r *MongoRepo) IncomeTotal(
+func (m *MongoRepo) IncomeTotal(
 	ctx context.Context,
 	uid primitive.ObjectID,
 	start, end time.Time,
 ) (float64, error) {
 
-	cur, err := r.incomeCol.Aggregate(ctx, bson.A{
+	cur, err := m.incomeCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
 			"user_id": uid,
 			"date":    bson.M{"$gte": start, "$lt": end},
@@ -48,10 +48,10 @@ func (r *MongoRepo) IncomeTotal(
 		}}},
 	})
 	if err != nil {
-		r.logger.Error(
+		m.logger.Error(
 			"mongo aggregate income failed",
-			"request_id", requestctx.UID(ctx),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", uid.Hex(),
 			"err", err,
 		)
 		return 0, err
@@ -64,10 +64,10 @@ func (r *MongoRepo) IncomeTotal(
 
 	if cur.Next(ctx) {
 		if err := cur.Decode(&out); err != nil {
-			r.logger.Error(
+			m.logger.Error(
 				"mongo decode income total failed",
-				"request_id", requestctx.UID(ctx),
-				"user_id", uid.Hex(),
+				"request_id", requestctx.RequestID(ctx),
+				"uid", uid.Hex(),
 				"err", err,
 			)
 			return 0, err
@@ -78,13 +78,13 @@ func (r *MongoRepo) IncomeTotal(
 	return 0, nil
 }
 
-func (r *MongoRepo) ExpenseTotals(
+func (m *MongoRepo) ExpenseTotals(
 	ctx context.Context,
 	uid primitive.ObjectID,
 	start, end time.Time,
 ) (float64, []summary.CategoryBreakdown, error) {
 
-	cur, err := r.expensesCol.Aggregate(ctx, bson.A{
+	cur, err := m.expensesCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
 			"user_id": uid,
 			"date":    bson.M{"$gte": start, "$lt": end},
@@ -105,10 +105,10 @@ func (r *MongoRepo) ExpenseTotals(
 		}}},
 	})
 	if err != nil {
-		r.logger.Error(
+		m.logger.Error(
 			"mongo aggregate expenses failed",
-			"request_id", requestctx.UID(ctx),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", uid.Hex(),
 			"err", err,
 		)
 		return 0, nil, err
@@ -128,10 +128,10 @@ func (r *MongoRepo) ExpenseTotals(
 		}
 
 		if err := cur.Decode(&x); err != nil {
-			r.logger.Error(
+			m.logger.Error(
 				"mongo decode expense breakdown failed",
-				"request_id", requestctx.UID(ctx),
-				"user_id", uid.Hex(),
+				"request_id", requestctx.RequestID(ctx),
+				"uid", uid.Hex(),
 				"err", err,
 			)
 			return 0, nil, err

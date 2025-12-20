@@ -7,6 +7,9 @@ type uidKey struct{}
 var uidKeyInstance uidKey
 
 func WithUID(ctx context.Context, uid string) context.Context {
+	if ctx.Value(uidKeyInstance) != nil {
+		return ctx
+	}
 	return context.WithValue(ctx, uidKeyInstance, uid)
 }
 

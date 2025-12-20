@@ -13,20 +13,8 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	msg := "internal server error"
 
 	if ae, ok := apperr.AsAppError(err); ok {
+		status = ae.Status
 		msg = ae.Message
-
-		switch ae.Kind {
-		case apperr.Validation:
-			status = http.StatusBadRequest
-		case apperr.Unauthorized:
-			status = http.StatusUnauthorized
-		case apperr.Forbidden:
-			status = http.StatusForbidden
-		case apperr.NotFound:
-			status = http.StatusNotFound
-		case apperr.Conflict:
-			status = http.StatusConflict
-		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -34,6 +22,6 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"error":      msg,
-		"request_id": requestctx.UID(r.Context()),
+		"request_id": requestctx.RequestID(r.Context()),
 	})
 }

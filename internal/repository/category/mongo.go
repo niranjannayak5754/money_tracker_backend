@@ -38,8 +38,8 @@ func (m *MongoRepo) Create(
 	if err != nil {
 		m.logger.Error(
 			"mongo insert failed",
-			"request_id", requestctx.UID(ctx),
-			"user_id", cat.UserID.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", cat.UserID.Hex(),
 			"err", err,
 		)
 		return err
@@ -48,15 +48,19 @@ func (m *MongoRepo) Create(
 	return nil
 }
 
-// ListActive returns all non-archived categories for a user.
-func (m *MongoRepo) ListActive(
+// List returns all categories for a user
+func (m *MongoRepo) List(
 	ctx context.Context,
 	uid primitive.ObjectID,
+	archived *bool,
 ) ([]category.Model, error) {
 
 	filter := bson.M{
-		"user_id":  uid,
-		"archived": bson.M{"$ne": true},
+		"user_id": uid,
+	}
+
+	if archived != nil {
+		filter["archived"] = *archived
 	}
 
 	opts := options.Find().
@@ -66,8 +70,8 @@ func (m *MongoRepo) ListActive(
 	if err != nil {
 		m.logger.Error(
 			"mongo find failed",
-			"request_id", requestctx.UID(ctx),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", uid.Hex(),
 			"err", err,
 		)
 		return nil, err
@@ -80,8 +84,8 @@ func (m *MongoRepo) ListActive(
 		if err := cur.Decode(&v); err != nil {
 			m.logger.Error(
 				"mongo decode failed",
-				"request_id", requestctx.UID(ctx),
-				"user_id", uid.Hex(),
+				"request_id", requestctx.RequestID(ctx),
+				"uid", uid.Hex(),
 				"err", err,
 			)
 			return nil, err
@@ -92,8 +96,8 @@ func (m *MongoRepo) ListActive(
 	if err := cur.Err(); err != nil {
 		m.logger.Error(
 			"mongo cursor error",
-			"request_id", requestctx.UID(ctx),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", uid.Hex(),
 			"err", err,
 		)
 		return nil, err
@@ -121,8 +125,8 @@ func (m *MongoRepo) Update(
 	if err != nil {
 		m.logger.Error(
 			"mongo update failed",
-			"request_id", requestctx.UID(ctx),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", uid.Hex(),
 			"category_id", id.Hex(),
 			"err", err,
 		)
@@ -148,8 +152,8 @@ func (m *MongoRepo) ExistsForUser(
 	if err != nil {
 		m.logger.Error(
 			"mongo count failed",
-			"request_id", requestctx.UID(ctx),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(ctx),
+			"uid", uid.Hex(),
 			"category_id", categoryID.Hex(),
 			"err", err,
 		)

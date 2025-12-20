@@ -72,11 +72,31 @@ paths:
         '200':
           description: User info returned
 
-  /categories:
-    get:
-      summary: List active categories
+  /auth/logout:
+    post:
+      summary: Logout user (invalidate token)
       security:
         - bearerAuth: []
+      responses:
+        '200':
+          description: Logged out
+
+  /categories:
+    get:
+      summary: List categories
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: archived
+          required: false
+          schema:
+            type: boolean
+          description: |
+            Filter categories by archived status.
+            - `true`  → archived categories only
+            - `false` → active categories only
+            - omitted → all categories
       responses:
         '200':
           description: OK

@@ -9,7 +9,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
-	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/category"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
@@ -48,12 +47,31 @@ func (h *CategoryHandler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := h.svc.List(r.Context(), uid)
+	ctx := r.Context()
+	archived := r.URL.Query().Get("archived")
+	var (
+		items []category.Model
+		err   error
+	)
+
+	switch archived {
+	case "":
+		items, err = h.svc.List(ctx, uid)
+	case "false":
+		items, err = h.svc.ListActive(ctx, uid)
+	case "true":
+		items, err = h.svc.ListArchived(ctx, uid)
+	default:
+		response.BadReq(w, "archived must be true or false")
+		return
+	}
+
 	if err != nil {
 		h.logger.Error(
 			"category.list failed",
-			"request_id", requestctx.UID(r.Context()),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", uid.Hex(),
+			"archived", archived,
 			"err", err,
 		)
 		response.WriteError(w, r, err)
@@ -80,16 +98,7 @@ func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		appErr := apperr.ValidationErr("invalid json payload")
-
-		h.logger.Warn(
-			"category.create invalid json",
-			"request_id", requestctx.UID(r.Context()),
-			"user_id", uid.Hex(),
-			"err", err,
-		)
-
-		response.WriteError(w, r, appErr)
+		response.BadReq(w, "invalid json payload")
 		return
 	}
 
@@ -100,8 +109,8 @@ func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Error(
 			"category.create failed",
-			"request_id", requestctx.UID(r.Context()),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", uid.Hex(),
 			"err", err,
 		)
 		response.WriteError(w, r, err)
@@ -130,21 +139,11 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		appErr := apperr.ValidationErr("invalid json payload")
-
-		h.logger.Warn(
-			"category.update invalid payload",
-			"request_id", requestctx.UID(r.Context()),
-			"user_id", uid.Hex(),
-			"category_id", catID.Hex(),
-			"err", err,
-		)
-
-		response.WriteError(w, r, appErr)
+		response.BadReq(w, "invalid json payload")
 		return
 	}
 
-	updated, err := h.svc.Update(
+	err = h.svc.Update(
 		r.Context(),
 		uid,
 		catID,
@@ -156,25 +155,10 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Error(
 			"category.update failed",
-			"request_id", requestctx.UID(r.Context()),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", uid.Hex(),
 			"err", err,
 		)
-		response.WriteError(w, r, err)
-		return
-	}
-
-	if !updated {
-		err := apperr.NotFoundErr("category not found")
-
-		h.logger.Info(
-			"category.update not found",
-			"request_id", requestctx.UID(r.Context()),
-			"user_id", uid.Hex(),
-			"category_id", catID.Hex(),
-			"err", err,
-		)
-
 		response.WriteError(w, r, err)
 		return
 	}

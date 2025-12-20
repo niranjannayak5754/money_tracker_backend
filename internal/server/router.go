@@ -27,11 +27,10 @@ func RegisterRoutesV2(r chi.Router, c *Container) {
 	// protected routes
 	r.Group(func(priv chi.Router) {
 		priv.Use(c.AuthMw.RequireAuth)
-		priv.Get("/summary", c.SummaryH.Get)
-
 		priv.Mount("/categories", c.CategoryH.Routes())
 		priv.Mount("/income", c.IncomeH.Routes())
 		priv.Mount("/expenses", c.ExpenseH.Routes())
+		priv.Get("/summary", c.SummaryH.Get)
 	})
 
 }

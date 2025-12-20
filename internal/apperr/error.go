@@ -1,6 +1,9 @@
 package apperr
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+)
 
 type Kind string
 
@@ -11,11 +14,13 @@ const (
 	Conflict     Kind = "conflict"
 	Validation   Kind = "validation"
 	Internal     Kind = "internal"
+	BadRequest   Kind = "bad_request"
 )
 
 type Error struct {
 	Kind    Kind
 	Message string
+	Status  int
 	Cause   error
 }
 
@@ -35,6 +40,7 @@ func ValidationErr(msg string) error {
 	return &Error{
 		Kind:    Validation,
 		Message: msg,
+		Status:  http.StatusBadRequest,
 	}
 }
 
@@ -43,6 +49,7 @@ func UnauthorizedErr(msg string) error {
 	return &Error{
 		Kind:    Unauthorized,
 		Message: msg,
+		Status:  http.StatusUnauthorized,
 	}
 }
 
@@ -51,6 +58,7 @@ func ForbiddenErr(msg string) error {
 	return &Error{
 		Kind:    Forbidden,
 		Message: msg,
+		Status:  http.StatusForbidden,
 	}
 }
 
@@ -59,6 +67,7 @@ func NotFoundErr(msg string) error {
 	return &Error{
 		Kind:    NotFound,
 		Message: msg,
+		Status:  http.StatusNotFound,
 	}
 }
 
@@ -67,6 +76,7 @@ func ConflictErr(msg string) error {
 	return &Error{
 		Kind:    Conflict,
 		Message: msg,
+		Status:  http.StatusConflict,
 	}
 }
 
@@ -75,7 +85,16 @@ func InternalErr(msg string, cause error) error {
 	return &Error{
 		Kind:    Internal,
 		Message: msg,
+		Status:  http.StatusInternalServerError,
 		Cause:   cause,
+	}
+}
+
+func BadRequestErr(msg string) error {
+	return &Error{
+		Kind:    BadRequest,
+		Message: msg,
+		Status:  http.StatusBadRequest,
 	}
 }
 

@@ -13,7 +13,7 @@ type Repository interface {
 		userID, id primitive.ObjectID,
 		set map[string]any,
 	) (bool, error)
-	ListActive(ctx context.Context, userID primitive.ObjectID) ([]Model, error)
+	List(ctx context.Context, userID primitive.ObjectID, archived *bool) ([]Model, error)
 	ExistsForUser(
 		ctx context.Context,
 		userID, categoryID primitive.ObjectID,

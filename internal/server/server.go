@@ -24,7 +24,7 @@ func New(cfg config.Config, c *Container, logger *slog.Logger) *Server {
 
 	// global middleware
 	r.Use(
-		chimw.RequestID,
+		middleware.RequestID,
 		chimw.RealIP,
 		chimw.Recoverer,
 	)

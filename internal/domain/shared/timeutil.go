@@ -1,14 +1,13 @@
 package shared
 
 import (
-	"errors"
 	"math"
 	"time"
 
+	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
-
-var ErrInvalidMonth = errors.New("invalid month format, expected YYYY-MM")
 
 type FlexibleTime struct {
 	time.Time
@@ -44,19 +43,19 @@ func (ft *FlexibleTime) UnmarshalJSON(b []byte) error {
 		}
 	}
 
-	return errors.New("invalid date format")
+	return apperr.BadRequestErr("invalid date format")
 }
 
 // MonthBounds returns the start and end timestamps for the given month
 // in UTC. Month must be in "YYYY-MM" format.
 func MonthBounds(month string) (time.Time, time.Time, error) {
-	if len(month) != 7 {
-		return time.Time{}, time.Time{}, ErrInvalidMonth
+	if len(month) != config.SEVEN {
+		return time.Time{}, time.Time{}, apperr.BadRequestErr("invalid month format, expected YYYY-MM")
 	}
 
 	t, err := time.Parse("2006-01", month)
 	if err != nil {
-		return time.Time{}, time.Time{}, ErrInvalidMonth
+		return time.Time{}, time.Time{}, apperr.BadRequestErr("invalid month format, expected YYYY-MM")
 	}
 
 	start := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)

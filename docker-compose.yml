@@ -1,22 +1,36 @@
 version: "3.9"
+
 services:
   api:
-    build: .
+    image: money-tracker-api
+    container_name: money-tracker-api
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
     env_file: .env.example
     restart: unless-stopped
+
     ports:
       - "8080:8080"
+
+    volumes:
+      - .:/app            # watch code changes
+      - /app/tmp          # prevent binary overwrite
+
     depends_on:
-      - mongo
-    # Health check hits your /health route
+      mongo:
+        condition: service_started
+
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/health || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5
+      start_period: 20s
 
   mongo:
     image: mongo:7
+    container_name: money-tracker-mongo
     restart: unless-stopped
     ports:
       - "27017:27017"
@@ -25,14 +39,14 @@ services:
 
   mongo-express:
     image: mongo-express:1
+    container_name: money-tracker-mongo-express
     restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
-      ME_CONFIG_MONGODB_URL: "mongodb://mongo:27017"
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017
     depends_on:
       - mongo
 
 volumes:
   mongo_data:
-

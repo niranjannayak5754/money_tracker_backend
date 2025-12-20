@@ -7,11 +7,22 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/ptr"
 )
 
 // SERVICE INTERFACE
 type Service interface {
 	List(
+		ctx context.Context,
+		userID primitive.ObjectID,
+	) ([]Model, error)
+
+	ListActive(
+		ctx context.Context,
+		userID primitive.ObjectID,
+	) ([]Model, error)
+
+	ListArchived(
 		ctx context.Context,
 		userID primitive.ObjectID,
 	) ([]Model, error)
@@ -26,7 +37,7 @@ type Service interface {
 		ctx context.Context,
 		userID, categoryID primitive.ObjectID,
 		in UpdateInput,
-	) (bool, error)
+	) error
 }
 
 // SERVICE IMPLEMENTATION (PRIVATE)
@@ -51,13 +62,44 @@ type UpdateInput struct {
 
 // BUSINESS LOGIC
 
-// List returns all active categories for a user
+// List returns all categories for a user
 func (s *service) List(
 	ctx context.Context,
 	userID primitive.ObjectID,
 ) ([]Model, error) {
 
-	return s.repo.ListActive(ctx, userID)
+	userCategories, err := s.repo.List(ctx, userID, nil)
+	if err != nil {
+		return nil, apperr.InternalErr("failed to list categories", err)
+	}
+
+	return userCategories, nil
+}
+
+func (s *service) ListActive(
+	ctx context.Context,
+	userID primitive.ObjectID,
+) ([]Model, error) {
+
+	userCategories, err := s.repo.List(ctx, userID, ptr.Bool(false))
+	if err != nil {
+		return nil, apperr.InternalErr("failed to list active categories", err)
+	}
+
+	return userCategories, nil
+}
+
+func (s *service) ListArchived(
+	ctx context.Context,
+	userID primitive.ObjectID,
+) ([]Model, error) {
+
+	userCategories, err := s.repo.List(ctx, userID, ptr.Bool(true))
+	if err != nil {
+		return nil, apperr.InternalErr("failed to list archived categories", err)
+	}
+
+	return userCategories, nil
 }
 
 // Create creates a new category with validation
@@ -104,13 +146,13 @@ func (s *service) Update(
 	ctx context.Context,
 	userID, categoryID primitive.ObjectID,
 	in UpdateInput,
-) (bool, error) {
+) error {
 
 	set := map[string]any{}
 
 	if in.Name != nil {
 		if *in.Name == "" {
-			return false, apperr.ValidationErr("category name cannot be empty")
+			return apperr.ValidationErr("category name cannot be empty")
 		}
 		set["name"] = *in.Name
 	}
@@ -120,16 +162,20 @@ func (s *service) Update(
 	}
 
 	if len(set) == 0 {
-		return false, apperr.ValidationErr("no fields to update")
+		return apperr.ValidationErr("no fields to update")
 	}
 
 	ok, err := s.repo.Update(ctx, userID, categoryID, set)
 	if err != nil {
-		return false, apperr.InternalErr(
+		return apperr.InternalErr(
 			"failed to update category",
 			err,
 		)
 	}
 
-	return ok, nil
+	if !ok {
+		return apperr.NotFoundErr("category not found")
+	}
+
+	return nil
 }

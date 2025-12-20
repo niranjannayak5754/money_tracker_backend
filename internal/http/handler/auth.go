@@ -7,7 +7,6 @@ import (
 
 	"log/slog"
 
-	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/user"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
@@ -41,15 +40,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		appErr := apperr.ValidationErr("invalid json payload")
-
-		h.logger.Warn(
-			"auth.register invalid payload",
-			"request_id", requestctx.UID(r.Context()),
-			"err", err,
-		)
-
-		response.WriteError(w, r, appErr)
+		response.BadReq(w, `invalid json payload`)
 		return
 	}
 
@@ -60,7 +51,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Warn(
 			"auth.register failed",
-			"request_id", requestctx.UID(r.Context()),
+			"request_id", requestctx.RequestID(r.Context()),
 			"email", in.Email,
 			"err", err,
 		)
@@ -83,50 +74,37 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		appErr := apperr.ValidationErr("invalid json payload")
-
-		h.logger.Warn(
-			"auth.login invalid payload",
-			"request_id", requestctx.UID(r.Context()),
-			"err", err,
-		)
-
-		response.WriteError(w, r, appErr)
+		response.BadReq(w, `invalid json payload`)
 		return
 	}
 
 	u, err := h.svc.Login(r.Context(), in.Email, in.Password)
 	if err != nil {
-		// SECURITY: collapse all login failures
-		appErr := apperr.UnauthorizedErr("invalid credentials")
-
 		h.logger.Warn(
 			"auth.login failed",
-			"request_id", requestctx.UID(r.Context()),
+			"request_id", requestctx.RequestID(r.Context()),
 			"email", in.Email,
 			"err", err,
 		)
 
-		response.WriteError(w, r, appErr)
+		response.WriteError(w, r, err)
 		return
 	}
 
 	token, err := security.Sign(
 		h.cfg.JWTSecret,
 		u.ID.Hex(),
-		7*24*time.Hour,
+		config.SEVEN_DAYS_IN_HOUR*time.Hour,
 	)
 	if err != nil {
-		appErr := apperr.InternalErr("failed to issue access token", err)
-
 		h.logger.Error(
 			"auth.login jwt signing failed",
-			"request_id", requestctx.UID(r.Context()),
-			"user_id", u.ID.Hex(),
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", u.ID.Hex(),
 			"err", err,
 		)
 
-		response.WriteError(w, r, appErr)
+		response.WriteError(w, r, err)
 		return
 	}
 
@@ -146,8 +124,8 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Warn(
 			"auth.me user not found",
-			"request_id", requestctx.UID(r.Context()),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", uid.Hex(),
 			"err", err,
 		)
 

@@ -6,8 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/summary"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
 )
 
 type SummaryHandler struct {
@@ -37,8 +37,8 @@ func (h *SummaryHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Error(
 			"summary.get failed",
-			"request_id", requestctx.UID(r.Context()),
-			"user_id", uid.Hex(),
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", uid.Hex(),
 			"month", month,
 			"err", err,
 		)

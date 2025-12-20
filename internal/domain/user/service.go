@@ -9,6 +9,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 )
 
 type Service interface {
@@ -78,11 +79,14 @@ func (s *service) Login(
 
 	u, err := s.repo.FindByEmail(ctx, email)
 	if err != nil {
-		return nil, apperr.UnauthorizedErr("invalid credentials")
+		if repository.DataNotFoundErr(err) {
+			return nil, apperr.UnauthorizedErr("invalid email")
+		}
+		return nil, apperr.InternalErr("login error", err)
 	}
 
 	if bcrypt.CompareHashAndPassword(u.PassHash, []byte(password)) != nil {
-		return nil, apperr.UnauthorizedErr("invalid credentials")
+		return nil, apperr.UnauthorizedErr("invalid password")
 	}
 
 	return u, nil
@@ -95,7 +99,10 @@ func (s *service) GetByID(
 
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, apperr.NotFoundErr("user not found")
+		if repository.DataNotFoundErr(err) {
+			return nil, apperr.NotFoundErr("user not found")
+		}
+		return nil, apperr.InternalErr("get user by id error", err)
 	}
 
 	return u, nil
