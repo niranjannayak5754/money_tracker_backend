@@ -46,8 +46,9 @@ func (m *MongoRepo) IncomeTotal(
 
 	cur, err := m.incomeCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
-			"user_id": uid,
-			"date":    bson.M{"$gte": start, "$lt": end},
+			"user_id":   uid,
+			"date":      bson.M{"$gte": start, "$lt": end},
+			"deleted_at": bson.M{"$exists": false},
 		}}},
 		bson.D{{Key: "$group", Value: bson.M{
 			"_id":   nil,
@@ -98,8 +99,9 @@ func (m *MongoRepo) ExpenseTotals(
 
 	cur, err := m.expensesCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
-			"user_id": uid,
-			"date":    bson.M{"$gte": start, "$lt": end},
+			"user_id":   uid,
+			"date":      bson.M{"$gte": start, "$lt": end},
+			"deleted_at": bson.M{"$exists": false},
 		}}},
 		bson.D{{Key: "$group", Value: bson.M{
 			"_id":   "$category_id",

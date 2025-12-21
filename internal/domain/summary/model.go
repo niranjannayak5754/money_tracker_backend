@@ -12,3 +12,10 @@ type Result struct {
 	Savings           float64             `json:"savings"`
 	CategoryBreakdown []CategoryBreakdown `json:"category_breakdown"`
 }
+
+type MonthlyComparison struct {
+	Month   string  `json:"month"`
+	Income  float64 `json:"income"`
+	Expense float64 `json:"expense"`
+	Savings float64 `json:"savings"`
+}

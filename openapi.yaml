@@ -29,6 +29,22 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  schemas:
+    MonthlyComparison:
+      type: object
+      properties:
+        month:
+          type: string
+          example: "2025-10"
+        income:
+          type: number
+          example: 60000
+        expense:
+          type: number
+          example: 42000
+        savings:
+          type: number
+          example: 18000
 
 paths:
   /health:
@@ -296,4 +312,28 @@ paths:
           schema: { type: string }
       responses:
         '200': { description: Summary returned }
+
+  /summary/compare:
+    get:
+      tags: [summary]
+      summary: Compare income, expense and savings over time
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 3
+          description: Number of months to compare
+      responses:
+        '200':
+          description: Monthly comparison array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MonthlyComparison'
 
