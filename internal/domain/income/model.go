@@ -15,4 +15,6 @@ type Model struct {
 	Notes     string          `json:"notes,omitempty"`
 	CreatedAt time.Time       `json:"created_at"`
 	UpdatedAt time.Time       `json:"updated_at"`
+	DeletedAt *time.Time      `json:"deleted_at,omitempty"`
+	DeletedBy *common.UserID  `json:"deleted_by,omitempty"`
 }

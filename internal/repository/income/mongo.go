@@ -42,6 +42,8 @@ type mongoIncome struct {
 	Notes     string               `bson:"notes,omitempty"`
 	CreatedAt time.Time            `bson:"created_at"`
 	UpdatedAt time.Time            `bson:"updated_at"`
+	DeletedAt *time.Time           `bson:"deleted_at,omitempty"`
+	DeletedBy *primitive.ObjectID  `bson:"deleted_by,omitempty"`
 }
 
 func (m *MongoRepo) Create(ctx context.Context, rec income.Model) error {
@@ -95,6 +97,7 @@ func (m *MongoRepo) ListByMonth(
 			"$gte": start,
 			"$lt":  end,
 		},
+		"deleted_at": bson.M{"$exists": false},
 	}
 
 	opts := options.Find().
@@ -192,14 +195,15 @@ func (m *MongoRepo) Delete(
 		return false, err
 	}
 
-	res, err := m.col.DeleteOne(
+	res, err := m.col.UpdateOne(
 		ctx,
 		bson.M{"_id": incomeId, "user_id": uid},
+		bson.M{"$set": bson.M{"deleted_at": time.Now().UTC(), "deleted_by": uid}},
 	)
 
 	if err != nil {
 		m.logger.Error(
-			"mongo delete failed",
+			"mongo soft-delete failed",
 			"request_id", requestctx.RequestID(ctx),
 			"uid", userId,
 			"income_id", id,
@@ -208,5 +212,5 @@ func (m *MongoRepo) Delete(
 		return false, err
 	}
 
-	return res.DeletedCount > 0, nil
+	return res.MatchedCount > 0, nil
 }

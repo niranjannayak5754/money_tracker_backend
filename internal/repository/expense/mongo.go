@@ -109,6 +109,8 @@ func (m *mongoRepo) ListByMonth(
 			"$gte": start,
 			"$lt":  end,
 		},
+		// exclude soft-deleted docs
+		"deleted_at": bson.M{"$exists": false},
 	}
 
 	if categoryID != nil {
@@ -267,16 +269,17 @@ func (m *mongoRepo) Delete(
 		return false, err
 	}
 
-	res, err := m.col.DeleteOne(
+	res, err := m.col.UpdateOne(
 		ctx,
 		bson.M{
 			"_id":     eid,
 			"user_id": uid,
 		},
+		bson.M{"$set": bson.M{"deleted_at": time.Now().UTC(), "deleted_by": uid}},
 	)
 	if err != nil {
 		m.logger.Error(
-			"mongo delete failed",
+			"mongo soft-delete failed",
 			"request_id", requestctx.RequestID(ctx),
 			"uid", userID,
 			"expense_id", id,
@@ -285,5 +288,5 @@ func (m *mongoRepo) Delete(
 		return false, err
 	}
 
-	return res.DeletedCount > 0, nil
+	return res.MatchedCount > 0, nil
 }
