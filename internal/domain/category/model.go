@@ -3,14 +3,14 @@ package category
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 )
 
 type Model struct {
-	ID        primitive.ObjectID `bson:"_id" json:"id"`
-	UserID    primitive.ObjectID `bson:"user_id" json:"user_id"`
-	Name      string             `bson:"name" json:"name"`
-	Type      string             `bson:"type" json:"type"` // expense | income
-	Archived  bool               `bson:"archived" json:"archived"`
-	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
+	ID        common.CategoryID `json:"id"`
+	UserID    common.UserID     `json:"user_id"`
+	Name      string            `json:"name"`
+	Type      string            `json:"type"` // expense | income
+	Archived  bool              `json:"archived"`
+	CreatedAt time.Time         `json:"created_at"`
 }

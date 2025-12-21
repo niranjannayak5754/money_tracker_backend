@@ -2,6 +2,7 @@ package incomerepo
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -10,8 +11,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
+	mongohelper "github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
 )
 
 type MongoRepo struct {
@@ -29,13 +33,45 @@ func New(
 	}
 }
 
+type mongoIncome struct {
+	ID        primitive.ObjectID   `bson:"_id"`
+	UserID    primitive.ObjectID   `bson:"user_id"`
+	Amount    primitive.Decimal128 `bson:"amount"`
+	Date      time.Time            `bson:"date"`
+	Source    string               `bson:"source,omitempty"`
+	Notes     string               `bson:"notes,omitempty"`
+	CreatedAt time.Time            `bson:"created_at"`
+	UpdatedAt time.Time            `bson:"updated_at"`
+}
+
 func (m *MongoRepo) Create(ctx context.Context, rec income.Model) error {
-	_, err := m.col.InsertOne(ctx, rec)
+	uid, err := mongohelper.ObjectIDFromHex(string(rec.UserID))
+	if err != nil {
+		return err
+	}
+
+	dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", rec.Amount))
+	if err != nil {
+		return err
+	}
+
+	doc := mongoIncome{
+		ID:        primitive.NewObjectID(),
+		UserID:    uid,
+		Amount:    dec,
+		Date:      rec.Date,
+		Source:    rec.Source,
+		Notes:     rec.Notes,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+
+	_, err = m.col.InsertOne(ctx, doc)
 	if err != nil {
 		m.logger.Error(
 			"mongo insert failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", rec.UserID.Hex(),
+			"uid", rec.UserID,
 			"err", err,
 		)
 	}
@@ -44,9 +80,14 @@ func (m *MongoRepo) Create(ctx context.Context, rec income.Model) error {
 
 func (m *MongoRepo) ListByMonth(
 	ctx context.Context,
-	uid primitive.ObjectID,
+	userId common.UserID,
 	start, end time.Time,
 ) ([]income.Model, error) {
+
+	uid, err := mongohelper.ObjectIDFromHex(string(userId))
+	if err != nil {
+		return nil, err
+	}
 
 	filter := bson.M{
 		"user_id": uid,
@@ -64,7 +105,7 @@ func (m *MongoRepo) ListByMonth(
 		m.logger.Error(
 			"mongo find failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", uid.Hex(),
+			"uid", userId,
 			"err", err,
 		)
 		return nil, err
@@ -73,31 +114,53 @@ func (m *MongoRepo) ListByMonth(
 
 	var out []income.Model
 	for cur.Next(ctx) {
-		var v income.Model
-		if err := cur.Decode(&v); err != nil {
+		var mi mongoIncome
+		if err := cur.Decode(&mi); err != nil {
 			m.logger.Error(
 				"mongo decode failed",
 				"request_id", requestctx.RequestID(ctx),
-				"uid", uid.Hex(),
+				"uid", userId,
 				"err", err,
 			)
 			return nil, err
 		}
-		out = append(out, v)
+
+		out = append(out, income.Model{
+			ID:        common.IncomeID(mi.ID.Hex()),
+			UserID:    common.UserID(mi.UserID.Hex()),
+			Amount:    shared.Decimal128ToFloat(mi.Amount),
+			Date:      mi.Date,
+			Source:    mi.Source,
+			Notes:     mi.Notes,
+			CreatedAt: mi.CreatedAt,
+			UpdatedAt: mi.UpdatedAt,
+		})
 	}
 
-	return out, cur.Err()
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (m *MongoRepo) Update(
 	ctx context.Context,
-	uid, id primitive.ObjectID,
+	userId common.UserID,
+	id common.IncomeID,
 	set map[string]any,
 ) (bool, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userId))
+	if err != nil {
+		return false, err
+	}
+	incomeId, err := mongohelper.ObjectIDFromHex(string(id))
+	if err != nil {
+		return false, err
+	}
 
 	res, err := m.col.UpdateOne(
 		ctx,
-		bson.M{"_id": id, "user_id": uid},
+		bson.M{"_id": incomeId, "user_id": uid},
 		bson.M{"$set": set},
 	)
 
@@ -105,8 +168,8 @@ func (m *MongoRepo) Update(
 		m.logger.Error(
 			"mongo update failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", uid.Hex(),
-			"income_id", id.Hex(),
+			"uid", userId,
+			"income_id", id,
 			"err", err,
 		)
 		return false, err
@@ -117,20 +180,29 @@ func (m *MongoRepo) Update(
 
 func (m *MongoRepo) Delete(
 	ctx context.Context,
-	uid, id primitive.ObjectID,
+	userId common.UserID,
+	id common.IncomeID,
 ) (bool, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userId))
+	if err != nil {
+		return false, err
+	}
+	incomeId, err := mongohelper.ObjectIDFromHex(string(id))
+	if err != nil {
+		return false, err
+	}
 
 	res, err := m.col.DeleteOne(
 		ctx,
-		bson.M{"_id": id, "user_id": uid},
+		bson.M{"_id": incomeId, "user_id": uid},
 	)
 
 	if err != nil {
 		m.logger.Error(
 			"mongo delete failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", uid.Hex(),
-			"income_id", id.Hex(),
+			"uid", userId,
+			"income_id", id,
 			"err", err,
 		)
 		return false, err

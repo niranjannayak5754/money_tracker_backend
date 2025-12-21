@@ -3,12 +3,12 @@ package user
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 )
 
 type Model struct {
-	ID        primitive.ObjectID `bson:"_id" json:"id"`
-	Email     string             `bson:"email" json:"email"`
-	PassHash  []byte             `bson:"pass_hash" json:"-"`
-	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
+	ID        common.UserID `json:"id"`
+	Email     string        `json:"email"`
+	PassHash  []byte        `json:"-"`
+	CreatedAt time.Time     `json:"created_at"`
 }

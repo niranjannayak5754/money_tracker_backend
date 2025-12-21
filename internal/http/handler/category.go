@@ -7,9 +7,9 @@ import (
 	"log/slog"
 
 	"github.com/go-chi/chi/v5"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/category"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/response"
 )
@@ -70,7 +70,7 @@ func (h *CategoryHandler) list(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error(
 			"category.list failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid.Hex(),
+			"uid", uid,
 			"archived", archived,
 			"err", err,
 		)
@@ -110,7 +110,7 @@ func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error(
 			"category.create failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid.Hex(),
+			"uid", uid,
 			"err", err,
 		)
 		response.WriteError(w, r, err)
@@ -127,8 +127,8 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	catID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
-	if err != nil {
+	catID := common.CategoryID(chi.URLParam(r, "id"))
+	if catID == "" {
 		response.BadReq(w, "bad category id")
 		return
 	}
@@ -143,7 +143,7 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.svc.Update(
+	err := h.svc.Update(
 		r.Context(),
 		uid,
 		catID,
@@ -156,7 +156,7 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error(
 			"category.update failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid.Hex(),
+			"uid", uid,
 			"err", err,
 		)
 		response.WriteError(w, r, err)

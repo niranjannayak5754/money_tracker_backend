@@ -38,7 +38,7 @@ func (h *SummaryHandler) Get(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error(
 			"summary.get failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid.Hex(),
+			"uid", uid,
 			"month", month,
 			"err", err,
 		)

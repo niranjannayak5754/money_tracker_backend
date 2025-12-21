@@ -3,14 +3,13 @@ package summary
 import (
 	"context"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
-
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 )
 
 type Service interface {
-	Get(ctx context.Context, userID primitive.ObjectID, month string) (Result, error)
+	Get(ctx context.Context, userID common.UserID, month string) (Result, error)
 }
 
 type service struct {
@@ -23,7 +22,7 @@ func NewService(repo Repository) Service {
 
 func (s *service) Get(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID common.UserID,
 	month string,
 ) (Result, error) {
 

@@ -9,9 +9,11 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/summary"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
+	mongohelper "github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
 )
 
 type MongoRepo struct {
@@ -33,9 +35,14 @@ func New(
 
 func (m *MongoRepo) IncomeTotal(
 	ctx context.Context,
-	uid primitive.ObjectID,
+	userId common.UserID,
 	start, end time.Time,
 ) (float64, error) {
+
+	uid, err := mongohelper.ObjectIDFromHex(string(userId))
+	if err != nil {
+		return 0, err
+	}
 
 	cur, err := m.incomeCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
@@ -51,7 +58,7 @@ func (m *MongoRepo) IncomeTotal(
 		m.logger.Error(
 			"mongo aggregate income failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", uid.Hex(),
+			"uid", userId,
 			"err", err,
 		)
 		return 0, err
@@ -67,7 +74,7 @@ func (m *MongoRepo) IncomeTotal(
 			m.logger.Error(
 				"mongo decode income total failed",
 				"request_id", requestctx.RequestID(ctx),
-				"uid", uid.Hex(),
+				"uid", userId,
 				"err", err,
 			)
 			return 0, err
@@ -80,9 +87,14 @@ func (m *MongoRepo) IncomeTotal(
 
 func (m *MongoRepo) ExpenseTotals(
 	ctx context.Context,
-	uid primitive.ObjectID,
+	userID common.UserID,
 	start, end time.Time,
 ) (float64, []summary.CategoryBreakdown, error) {
+
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return 0, nil, err
+	}
 
 	cur, err := m.expensesCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
@@ -108,7 +120,7 @@ func (m *MongoRepo) ExpenseTotals(
 		m.logger.Error(
 			"mongo aggregate expenses failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", uid.Hex(),
+			"uid", userID,
 			"err", err,
 		)
 		return 0, nil, err
@@ -131,7 +143,7 @@ func (m *MongoRepo) ExpenseTotals(
 			m.logger.Error(
 				"mongo decode expense breakdown failed",
 				"request_id", requestctx.RequestID(ctx),
-				"uid", uid.Hex(),
+				"uid", userID,
 				"err", err,
 			)
 			return 0, nil, err

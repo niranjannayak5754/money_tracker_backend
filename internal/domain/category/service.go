@@ -4,38 +4,27 @@ import (
 	"context"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
-
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/ptr"
 )
 
 // SERVICE INTERFACE
 type Service interface {
-	List(
-		ctx context.Context,
-		userID primitive.ObjectID,
-	) ([]Model, error)
-
-	ListActive(
-		ctx context.Context,
-		userID primitive.ObjectID,
-	) ([]Model, error)
-
-	ListArchived(
-		ctx context.Context,
-		userID primitive.ObjectID,
-	) ([]Model, error)
+	List(ctx context.Context, userID common.UserID) ([]Model, error)
+	ListActive(ctx context.Context, userID common.UserID) ([]Model, error)
+	ListArchived(ctx context.Context, userID common.UserID) ([]Model, error)
 
 	Create(
 		ctx context.Context,
-		userID primitive.ObjectID,
+		userID common.UserID,
 		in CreateInput,
 	) (Model, error)
 
 	Update(
 		ctx context.Context,
-		userID, categoryID primitive.ObjectID,
+		userID common.UserID,
+		categoryID common.CategoryID,
 		in UpdateInput,
 	) error
 }
@@ -65,7 +54,7 @@ type UpdateInput struct {
 // List returns all categories for a user
 func (s *service) List(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID common.UserID,
 ) ([]Model, error) {
 
 	userCategories, err := s.repo.List(ctx, userID, nil)
@@ -78,7 +67,7 @@ func (s *service) List(
 
 func (s *service) ListActive(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID common.UserID,
 ) ([]Model, error) {
 
 	userCategories, err := s.repo.List(ctx, userID, ptr.Bool(false))
@@ -91,7 +80,7 @@ func (s *service) ListActive(
 
 func (s *service) ListArchived(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID common.UserID,
 ) ([]Model, error) {
 
 	userCategories, err := s.repo.List(ctx, userID, ptr.Bool(true))
@@ -105,7 +94,7 @@ func (s *service) ListArchived(
 // Create creates a new category with validation
 func (s *service) Create(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID common.UserID,
 	in CreateInput,
 ) (Model, error) {
 
@@ -123,7 +112,7 @@ func (s *service) Create(
 	}
 
 	cat := Model{
-		ID:        primitive.NewObjectID(),
+		ID:        "", // ID will be set by the repository
 		UserID:    userID,
 		Name:      in.Name,
 		Type:      kind,
@@ -144,7 +133,8 @@ func (s *service) Create(
 // Update updates name and/or archived flag for a category
 func (s *service) Update(
 	ctx context.Context,
-	userID, categoryID primitive.ObjectID,
+	userID common.UserID,
+	categoryID common.CategoryID,
 	in UpdateInput,
 ) error {
 
@@ -167,10 +157,7 @@ func (s *service) Update(
 
 	ok, err := s.repo.Update(ctx, userID, categoryID, set)
 	if err != nil {
-		return apperr.InternalErr(
-			"failed to update category",
-			err,
-		)
+		return apperr.InternalErr("failed to update category", err)
 	}
 
 	if !ok {

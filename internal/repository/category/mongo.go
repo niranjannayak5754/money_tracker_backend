@@ -3,6 +3,7 @@ package categoryrepo
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -10,7 +11,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/category"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
+	mongohelper "github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
 )
 
 type MongoRepo struct {
@@ -28,18 +31,41 @@ func New(
 	}
 }
 
+type mongoCategory struct {
+	ID        primitive.ObjectID `bson:"_id"`
+	UserID    primitive.ObjectID `bson:"user_id"`
+	Name      string             `bson:"name"`
+	Type      string             `bson:"type"`
+	Archived  bool               `bson:"archived"`
+	CreatedAt time.Time          `bson:"created_at"`
+}
+
 // Create inserts a new category document.
 func (m *MongoRepo) Create(
 	ctx context.Context,
 	cat category.Model,
 ) error {
 
-	_, err := m.col.InsertOne(ctx, cat)
+	uid, err := mongohelper.ObjectIDFromHex(string(cat.UserID))
+	if err != nil {
+		return err
+	}
+
+	doc := mongoCategory{
+		ID:        primitive.NewObjectID(),
+		UserID:    uid,
+		Name:      cat.Name,
+		Type:      cat.Type,
+		Archived:  cat.Archived,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	_, err = m.col.InsertOne(ctx, doc)
 	if err != nil {
 		m.logger.Error(
 			"mongo insert failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", cat.UserID.Hex(),
+			"uid", cat.UserID,
 			"err", err,
 		)
 		return err
@@ -48,12 +74,17 @@ func (m *MongoRepo) Create(
 	return nil
 }
 
-// List returns all categories for a user
+// List returns all categories for a user.
 func (m *MongoRepo) List(
 	ctx context.Context,
-	uid primitive.ObjectID,
+	userID common.UserID,
 	archived *bool,
 ) ([]category.Model, error) {
+
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return nil, err
+	}
 
 	filter := bson.M{
 		"user_id": uid,
@@ -71,7 +102,7 @@ func (m *MongoRepo) List(
 		m.logger.Error(
 			"mongo find failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", uid.Hex(),
+			"uid", userID,
 			"err", err,
 		)
 		return nil, err
@@ -80,26 +111,28 @@ func (m *MongoRepo) List(
 
 	var out []category.Model
 	for cur.Next(ctx) {
-		var v category.Model
-		if err := cur.Decode(&v); err != nil {
+		var mc mongoCategory
+		if err := cur.Decode(&mc); err != nil {
 			m.logger.Error(
 				"mongo decode failed",
 				"request_id", requestctx.RequestID(ctx),
-				"uid", uid.Hex(),
+				"uid", userID,
 				"err", err,
 			)
 			return nil, err
 		}
-		out = append(out, v)
+
+		out = append(out, category.Model{
+			ID:        common.CategoryID(mc.ID.Hex()),
+			UserID:    common.UserID(mc.UserID.Hex()),
+			Name:      mc.Name,
+			Type:      mc.Type,
+			Archived:  mc.Archived,
+			CreatedAt: mc.CreatedAt,
+		})
 	}
 
 	if err := cur.Err(); err != nil {
-		m.logger.Error(
-			"mongo cursor error",
-			"request_id", requestctx.RequestID(ctx),
-			"uid", uid.Hex(),
-			"err", err,
-		)
 		return nil, err
 	}
 
@@ -109,14 +142,25 @@ func (m *MongoRepo) List(
 // Update modifies category fields.
 func (m *MongoRepo) Update(
 	ctx context.Context,
-	uid, id primitive.ObjectID,
+	userID common.UserID,
+	id common.CategoryID,
 	set map[string]any,
 ) (bool, error) {
+
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return false, err
+	}
+
+	cid, err := mongohelper.ObjectIDFromHex(string(id))
+	if err != nil {
+		return false, err
+	}
 
 	res, err := m.col.UpdateOne(
 		ctx,
 		bson.M{
-			"_id":     id,
+			"_id":     cid,
 			"user_id": uid,
 		},
 		bson.M{"$set": set},
@@ -126,8 +170,8 @@ func (m *MongoRepo) Update(
 		m.logger.Error(
 			"mongo update failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", uid.Hex(),
-			"category_id", id.Hex(),
+			"uid", userID,
+			"category_id", id,
 			"err", err,
 		)
 		return false, err
@@ -139,11 +183,22 @@ func (m *MongoRepo) Update(
 // ExistsForUser checks if a category belongs to the user and is not archived.
 func (m *MongoRepo) ExistsForUser(
 	ctx context.Context,
-	uid, categoryID primitive.ObjectID,
+	userID common.UserID,
+	categoryID common.CategoryID,
 ) (bool, error) {
 
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return false, err
+	}
+
+	cid, err := mongohelper.ObjectIDFromHex(string(categoryID))
+	if err != nil {
+		return false, err
+	}
+
 	filter := bson.M{
-		"_id":      categoryID,
+		"_id":      cid,
 		"user_id":  uid,
 		"archived": bson.M{"$ne": true},
 	}
@@ -153,8 +208,8 @@ func (m *MongoRepo) ExistsForUser(
 		m.logger.Error(
 			"mongo count failed",
 			"request_id", requestctx.RequestID(ctx),
-			"uid", uid.Hex(),
-			"category_id", categoryID.Hex(),
+			"uid", userID,
+			"category_id", categoryID,
 			"err", err,
 		)
 		return false, err

@@ -61,7 +61,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusCreated, map[string]any{
-		"id":    u.ID.Hex(),
+		"id":    u.ID,
 		"email": u.Email,
 	})
 }
@@ -93,14 +93,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	token, err := security.Sign(
 		h.cfg.JWTSecret,
-		u.ID.Hex(),
+		string(u.ID),
 		config.SEVEN_DAYS_IN_HOUR*time.Hour,
 	)
 	if err != nil {
 		h.logger.Error(
 			"auth.login jwt signing failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", u.ID.Hex(),
+			"uid", u.ID,
 			"err", err,
 		)
 
@@ -125,7 +125,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn(
 			"auth.me user not found",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid.Hex(),
+			"uid", uid,
 			"err", err,
 		)
 
@@ -134,7 +134,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]any{
-		"id":         u.ID.Hex(),
+		"id":         u.ID,
 		"email":      u.Email,
 		"created_at": u.CreatedAt,
 	})
@@ -168,7 +168,7 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn(
 			"auth.reset_password failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid.Hex(),
+			"uid", uid,
 			"err", err,
 		)
 

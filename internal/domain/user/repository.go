@@ -3,12 +3,12 @@ package user
 import (
 	"context"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 )
 
 type Repository interface {
 	Create(ctx context.Context, u Model) error
 	FindByEmail(ctx context.Context, email string) (*Model, error)
-	FindByID(ctx context.Context, id primitive.ObjectID) (*Model, error)
-	UpdatePasswordHash(ctx context.Context, id primitive.ObjectID, hash []byte) error
+	FindByID(ctx context.Context, id common.UserID) (*Model, error)
+	UpdatePasswordHash(ctx context.Context, id common.UserID, hash []byte) error
 }

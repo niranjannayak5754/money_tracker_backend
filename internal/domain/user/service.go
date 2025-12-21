@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
@@ -16,8 +16,8 @@ import (
 type Service interface {
 	Register(ctx context.Context, in RegisterInput) (Model, error)
 	Login(ctx context.Context, email, password string) (*Model, error)
-	GetByID(ctx context.Context, id primitive.ObjectID) (*Model, error)
-	ResetPassword(ctx context.Context, id primitive.ObjectID, newPassword string) error
+	GetByID(ctx context.Context, id common.UserID) (*Model, error)
+	ResetPassword(ctx context.Context, id common.UserID, newPassword string) error
 }
 
 type service struct {
@@ -56,7 +56,7 @@ func (s *service) Register(
 	}
 
 	u := Model{
-		ID:        primitive.NewObjectID(),
+		ID:        "",
 		Email:     email,
 		PassHash:  hash,
 		CreatedAt: time.Now().UTC(),
@@ -96,7 +96,7 @@ func (s *service) Login(
 
 func (s *service) GetByID(
 	ctx context.Context,
-	id primitive.ObjectID,
+	id common.UserID,
 ) (*Model, error) {
 
 	u, err := s.repo.FindByID(ctx, id)
@@ -112,7 +112,7 @@ func (s *service) GetByID(
 
 func (s *service) ResetPassword(
 	ctx context.Context,
-	id primitive.ObjectID,
+	id common.UserID,
 	newPassword string,
 ) error {
 	if newPassword == "" {

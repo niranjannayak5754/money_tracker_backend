@@ -2,20 +2,18 @@ package expense
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
-
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 )
 
 type Service interface {
-	Create(ctx context.Context, userID primitive.ObjectID, in CreateInput) (Model, error)
-	List(ctx context.Context, userID primitive.ObjectID, month, category string) ([]Model, error)
-	Update(ctx context.Context, userID, id primitive.ObjectID, in UpdateInput) error
-	Delete(ctx context.Context, userID, id primitive.ObjectID) error
+	Create(ctx context.Context, userID common.UserID, in CreateInput) (Model, error)
+	List(ctx context.Context, userID common.UserID, month, category string) ([]Model, error)
+	Update(ctx context.Context, userID common.UserID, id common.ExpenseID, in UpdateInput) error
+	Delete(ctx context.Context, userID common.UserID, id common.ExpenseID) error
 }
 
 type service struct {
@@ -36,7 +34,7 @@ func NewService(
 type CreateInput struct {
 	Amount     float64
 	Date       time.Time
-	CategoryID primitive.ObjectID
+	CategoryID common.CategoryID
 	Merchant   string
 	Notes      string
 	Tags       []string
@@ -45,7 +43,7 @@ type CreateInput struct {
 type UpdateInput struct {
 	Amount     *float64
 	Date       *time.Time
-	CategoryID *primitive.ObjectID
+	CategoryID *common.CategoryID
 	Merchant   *string
 	Notes      *string
 	Tags       *[]string
@@ -53,17 +51,12 @@ type UpdateInput struct {
 
 func (s *service) Create(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID common.UserID,
 	in CreateInput,
 ) (Model, error) {
 
 	if in.Amount <= 0 {
 		return Model{}, apperr.ValidationErr("amount must be greater than zero")
-	}
-
-	dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", in.Amount))
-	if err != nil {
-		return Model{}, apperr.InternalErr("invalid amount format", err)
 	}
 
 	ok, err := s.cats.ExistsForUser(ctx, userID, in.CategoryID)
@@ -77,10 +70,9 @@ func (s *service) Create(
 	now := time.Now().UTC()
 
 	exp := Model{
-		ID:         primitive.NewObjectID(),
+		ID:         "", // repository will set underlying mongo id
 		UserID:     userID,
-		Amount:     dec,
-		AmountF:    in.Amount,
+		Amount:     in.Amount,
 		Date:       shared.ChooseDate(in.Date),
 		CategoryID: in.CategoryID,
 		Merchant:   in.Merchant,
@@ -99,19 +91,16 @@ func (s *service) Create(
 
 func (s *service) List(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID common.UserID,
 	month, category string,
 ) ([]Model, error) {
 
 	start, end := shared.MonthRange(month)
 
-	var catID *primitive.ObjectID
+	var catID *common.CategoryID
 	if category != "" {
-		id, err := primitive.ObjectIDFromHex(category)
-		if err != nil {
-			return nil, apperr.ValidationErr("invalid category id")
-		}
-		catID = &id
+		cid := common.CategoryID(category)
+		catID = &cid
 	}
 
 	items, err := s.repo.ListByMonth(ctx, userID, start, end, catID)
@@ -123,16 +112,13 @@ func (s *service) List(
 		return []Model{}, nil
 	}
 
-	for i := range items {
-		items[i].AmountF = shared.Decimal128ToFloat(items[i].Amount)
-	}
-
 	return items, nil
 }
 
 func (s *service) Update(
 	ctx context.Context,
-	userID, id primitive.ObjectID,
+	userID common.UserID,
+	id common.ExpenseID,
 	in UpdateInput,
 ) error {
 
@@ -144,12 +130,7 @@ func (s *service) Update(
 		if *in.Amount <= 0 {
 			return apperr.ValidationErr("amount must be greater than zero")
 		}
-
-		dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", *in.Amount))
-		if err != nil {
-			return apperr.InternalErr("invalid amount format", err)
-		}
-		set["amount"] = dec
+		set["amount"] = *in.Amount
 	}
 
 	if in.Date != nil {
@@ -165,7 +146,7 @@ func (s *service) Update(
 		if !ok {
 			return apperr.ValidationErr("invalid category")
 		}
-		set["category_id"] = in.CategoryID
+		set["category_id"] = *in.CategoryID
 	}
 
 	if in.Merchant != nil {
@@ -194,7 +175,8 @@ func (s *service) Update(
 
 func (s *service) Delete(
 	ctx context.Context,
-	userID, id primitive.ObjectID,
+	userID common.UserID,
+	id common.ExpenseID,
 ) error {
 
 	deleted, err := s.repo.Delete(ctx, userID, id)

@@ -3,17 +3,16 @@ package income
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 )
 
 type Model struct {
-	ID        primitive.ObjectID   `bson:"_id" json:"id"`
-	UserID    primitive.ObjectID   `bson:"user_id" json:"user_id"`
-	Amount    primitive.Decimal128 `bson:"amount" json:"-"`
-	AmountF   float64              `bson:"-" json:"amount"`
-	Date      time.Time            `bson:"date" json:"date"`
-	Source    string               `bson:"source,omitempty" json:"source,omitempty"`
-	Notes     string               `bson:"notes,omitempty" json:"notes,omitempty"`
-	CreatedAt time.Time            `bson:"created_at" json:"created_at"`
-	UpdatedAt time.Time            `bson:"updated_at" json:"updated_at"`
+	ID        common.IncomeID `json:"id"`
+	UserID    common.UserID   `json:"user_id"`
+	Amount    float64         `json:"amount"`
+	Date      time.Time       `json:"date"`
+	Source    string          `json:"source,omitempty"`
+	Notes     string          `json:"notes,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }

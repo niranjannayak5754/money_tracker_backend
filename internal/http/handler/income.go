@@ -8,7 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/go-chi/chi/v5"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
@@ -81,7 +81,7 @@ func (h *IncomeHandler) create(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error(
 			"income.create failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid.Hex(),
+			"uid", uid,
 			"err", err,
 		)
 
@@ -106,7 +106,7 @@ func (h *IncomeHandler) list(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error(
 			"income.list failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"user_id", uid.Hex(),
+			"uid", uid,
 			"month", month,
 			"err", err,
 		)
@@ -129,11 +129,7 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	incomeID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
-	if err != nil {
-		response.BadReq(w, "invalid income id")
-		return
-	}
+	incomeID := common.IncomeID(chi.URLParam(r, "id"))
 
 	var in struct {
 		Amount *float64   `json:"amount"`
@@ -147,7 +143,7 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.svc.Update(
+	err := h.svc.Update(
 		r.Context(),
 		uid,
 		incomeID,
@@ -163,8 +159,8 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error(
 			"income.update failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid.Hex(),
-			"income_id", incomeID.Hex(),
+			"uid", uid,
+			"income_id", incomeID,
 			"err", err,
 		)
 
@@ -182,19 +178,15 @@ func (h *IncomeHandler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	incomeID, err := primitive.ObjectIDFromHex(chi.URLParam(r, "id"))
-	if err != nil {
-		response.BadReq(w, "invalid income id")
-		return
-	}
+	incomeID := common.IncomeID(chi.URLParam(r, "id"))
 
-	err = h.svc.Delete(r.Context(), uid, incomeID)
+	err := h.svc.Delete(r.Context(), uid, incomeID)
 	if err != nil {
 		h.logger.Error(
 			"income.delete failed",
 			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid.Hex(),
-			"income_id", incomeID.Hex(),
+			"uid", uid,
+			"income_id", incomeID,
 			"err", err,
 		)
 

@@ -4,19 +4,19 @@ import (
 	"context"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 )
 
 type Repository interface {
 	IncomeTotal(
 		ctx context.Context,
-		userID primitive.ObjectID,
+		userID common.UserID,
 		start, end time.Time,
 	) (float64, error)
 
 	ExpenseTotals(
 		ctx context.Context,
-		userID primitive.ObjectID,
+		userID common.UserID,
 		start, end time.Time,
 	) (float64, []CategoryBreakdown, error)
 }

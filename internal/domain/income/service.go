@@ -5,17 +5,16 @@ import (
 	"fmt"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
-
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 )
 
 type Service interface {
-	Create(ctx context.Context, userID primitive.ObjectID, in CreateInput) (Model, error)
-	List(ctx context.Context, userID primitive.ObjectID, month string) ([]Model, error)
-	Update(ctx context.Context, userID, id primitive.ObjectID, in UpdateInput) error
-	Delete(ctx context.Context, userID, id primitive.ObjectID) error
+	Create(ctx context.Context, userID common.UserID, in CreateInput) (Model, error)
+	List(ctx context.Context, userID common.UserID, month string) ([]Model, error)
+	Update(ctx context.Context, userID common.UserID, id common.IncomeID, in UpdateInput) error
+	Delete(ctx context.Context, userID common.UserID, id common.IncomeID) error
 }
 
 type service struct {
@@ -42,7 +41,7 @@ type UpdateInput struct {
 
 func (s *service) Create(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID common.UserID,
 	in CreateInput,
 ) (Model, error) {
 
@@ -50,18 +49,16 @@ func (s *service) Create(
 		return Model{}, apperr.ValidationErr("amount must be greater than zero")
 	}
 
-	dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", in.Amount))
-	if err != nil {
-		return Model{}, apperr.InternalErr("invalid amount format", err)
+	if in.Amount <= 0 {
+		return Model{}, apperr.ValidationErr("amount must be greater than zero")
 	}
 
 	now := time.Now().UTC()
 
 	rec := Model{
-		ID:        primitive.NewObjectID(),
+		ID:        "",
 		UserID:    userID,
-		Amount:    dec,
-		AmountF:   in.Amount,
+		Amount:    in.Amount,
 		Date:      shared.ChooseDate(in.Date),
 		Source:    in.Source,
 		Notes:     in.Notes,
@@ -73,12 +70,13 @@ func (s *service) Create(
 		return Model{}, apperr.InternalErr("failed to create income", err)
 	}
 
+	_ = fmt.Sprintf("%.2f", in.Amount)
 	return rec, nil
 }
 
 func (s *service) List(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID common.UserID,
 	month string,
 ) ([]Model, error) {
 
@@ -93,16 +91,15 @@ func (s *service) List(
 		return []Model{}, nil
 	}
 
-	for i := range items {
-		items[i].AmountF = shared.Decimal128ToFloat(items[i].Amount)
-	}
+	// repo returns domain-friendly float amounts
 
 	return items, nil
 }
 
 func (s *service) Update(
 	ctx context.Context,
-	userID, id primitive.ObjectID,
+	userID common.UserID,
+	id common.IncomeID,
 	in UpdateInput,
 ) error {
 
@@ -114,12 +111,7 @@ func (s *service) Update(
 		if *in.Amount <= 0 {
 			return apperr.ValidationErr("amount must be greater than zero")
 		}
-
-		dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", *in.Amount))
-		if err != nil {
-			return apperr.InternalErr("invalid amount format", err)
-		}
-		set["amount"] = dec
+		set["amount"] = *in.Amount
 	}
 
 	if in.Date != nil {
@@ -145,7 +137,8 @@ func (s *service) Update(
 
 func (s *service) Delete(
 	ctx context.Context,
-	userID, id primitive.ObjectID,
+	userID common.UserID,
+	id common.IncomeID,
 ) error {
 
 	deleted, err := s.repo.Delete(ctx, userID, id)
