@@ -17,17 +17,20 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	mongohelper "github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
+	auditrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/audit"
 )
 
 type mongoRepo struct {
 	col    *mongo.Collection
 	logger *slog.Logger
+	audit  *auditrepo.AuditRepo
 }
 
 func New(db *mongo.Database, logger *slog.Logger) expense.Repository {
 	return &mongoRepo{
 		col:    db.Collection("expenses"),
 		logger: logger.With("repo", "expense"),
+		audit:  auditrepo.New(db, logger),
 	}
 }
 
@@ -87,6 +90,22 @@ func (m *mongoRepo) Create(
 			"err", err,
 		)
 	}
+
+	// write audit entry
+	_ = m.audit.Write(ctx, auditrepo.Entry{
+		Action:   "create",
+		Entity:   "expense",
+		EntityID: doc.ID.Hex(),
+		Payload: bson.M{
+			"user_id":     doc.UserID.Hex(),
+			"amount":      shared.Decimal128ToFloat(doc.Amount),
+			"date":        doc.Date,
+			"category_id": doc.CategoryID.Hex(),
+			"merchant":    doc.Merchant,
+			"notes":       doc.Notes,
+			"tags":        doc.Tags,
+		},
+	})
 
 	return err
 }
@@ -250,6 +269,16 @@ func (m *mongoRepo) Update(
 		return false, err
 	}
 
+	// write audit entry
+	if res.MatchedCount > 0 {
+		_ = m.audit.Write(ctx, auditrepo.Entry{
+			Action:   "update",
+			Entity:   "expense",
+			EntityID: string(id),
+			Payload:  bson.M{"set": set},
+		})
+	}
+
 	return res.MatchedCount > 0, nil
 }
 
@@ -286,6 +315,17 @@ func (m *mongoRepo) Delete(
 			"err", err,
 		)
 		return false, err
+	}
+
+	if res.MatchedCount > 0 {
+		_ = m.audit.Write(ctx, auditrepo.Entry{
+			Action:   "delete",
+			Entity:   "expense",
+			EntityID: string(id),
+			Payload: bson.M{
+				"deleted_at": time.Now().UTC(),
+			},
+		})
 	}
 
 	return res.MatchedCount > 0, nil

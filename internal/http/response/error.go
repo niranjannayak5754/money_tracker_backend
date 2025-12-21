@@ -21,7 +21,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	w.WriteHeader(status)
 
 	_ = json.NewEncoder(w).Encode(map[string]string{
-		"error":      msg,
+		"message":    msg,
 		"request_id": requestctx.RequestID(r.Context()),
 	})
 }
