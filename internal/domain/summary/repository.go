@@ -19,4 +19,10 @@ type Repository interface {
 		userID common.UserID,
 		start, end time.Time,
 	) (float64, []CategoryBreakdown, error)
+
+	InvestmentTotal(
+		ctx context.Context,
+		userID common.UserID,
+		start, end time.Time,
+	) (float64, error)
 }

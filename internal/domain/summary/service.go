@@ -41,10 +41,15 @@ func (s *service) Get(
 		return Result{}, apperr.InternalErr("failed to calculate expense totals", err)
 	}
 
+	investTotal, err := s.repo.InvestmentTotal(ctx, userID, start, end)
+	if err != nil {
+		return Result{}, apperr.InternalErr("failed to calculate investment totals", err)
+	}
+
 	return Result{
 		IncomeTotal:       incomeTotal,
 		ExpenseTotal:      expenseTotal,
-		Savings:           incomeTotal - expenseTotal,
+		Savings:           incomeTotal - expenseTotal - investTotal,
 		CategoryBreakdown: breakdown,
 	}, nil
 }
@@ -76,11 +81,16 @@ func (s *service) Compare(
 			return nil, apperr.InternalErr("failed to calculate expense totals", err)
 		}
 
+		invTotal, err := s.repo.InvestmentTotal(ctx, userID, start, end)
+		if err != nil {
+			return nil, apperr.InternalErr("failed to calculate investment totals", err)
+		}
+
 		out = append(out, MonthlyComparison{
 			Month:   start.Format(config.STANDARD_YEAR_MONTH),
 			Income:  incomeTotal,
 			Expense: expenseTotal,
-			Savings: incomeTotal - expenseTotal,
+			Savings: incomeTotal - expenseTotal - invTotal,
 		})
 	}
 

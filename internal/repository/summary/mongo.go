@@ -17,9 +17,10 @@ import (
 )
 
 type MongoRepo struct {
-	incomeCol   *mongo.Collection
-	expensesCol *mongo.Collection
-	logger      *slog.Logger
+	incomeCol      *mongo.Collection
+	expensesCol    *mongo.Collection
+	investmentsCol *mongo.Collection
+	logger         *slog.Logger
 }
 
 func New(
@@ -27,9 +28,10 @@ func New(
 	logger *slog.Logger,
 ) summary.Repository {
 	return &MongoRepo{
-		incomeCol:   db.Collection("income"),
-		expensesCol: db.Collection("expenses"),
-		logger:      logger.With("repo", "summary"),
+		incomeCol:      db.Collection("income"),
+		expensesCol:    db.Collection("expenses"),
+		investmentsCol: db.Collection("investments"),
+		logger:         logger.With("repo", "summary"),
 	}
 }
 
@@ -46,8 +48,8 @@ func (m *MongoRepo) IncomeTotal(
 
 	cur, err := m.incomeCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
-			"user_id":   uid,
-			"date":      bson.M{"$gte": start, "$lt": end},
+			"user_id":    uid,
+			"date":       bson.M{"$gte": start, "$lt": end},
 			"deleted_at": bson.M{"$exists": false},
 		}}},
 		bson.D{{Key: "$group", Value: bson.M{
@@ -99,8 +101,8 @@ func (m *MongoRepo) ExpenseTotals(
 
 	cur, err := m.expensesCol.Aggregate(ctx, bson.A{
 		bson.D{{Key: "$match", Value: bson.M{
-			"user_id":   uid,
-			"date":      bson.M{"$gte": start, "$lt": end},
+			"user_id":    uid,
+			"date":       bson.M{"$gte": start, "$lt": end},
 			"deleted_at": bson.M{"$exists": false},
 		}}},
 		bson.D{{Key: "$group", Value: bson.M{
@@ -162,4 +164,54 @@ func (m *MongoRepo) ExpenseTotals(
 	}
 
 	return total, cats, nil
+}
+
+func (m *MongoRepo) InvestmentTotal(
+	ctx context.Context,
+	userId common.UserID,
+	start, end time.Time,
+) (float64, error) {
+
+	uid, err := mongohelper.ObjectIDFromHex(string(userId))
+	if err != nil {
+		return 0, err
+	}
+
+	cur, err := m.investmentsCol.Aggregate(ctx, bson.A{
+		bson.D{{Key: "$match", Value: bson.M{
+			"user_id":    uid,
+			"date":       bson.M{"$gte": start, "$lt": end},
+			"deleted_at": bson.M{"$exists": false},
+		}}},
+		bson.D{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$amount"}}}},
+	})
+	if err != nil {
+		m.logger.Error(
+			"mongo aggregate investments failed",
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userId,
+			"err", err,
+		)
+		return 0, err
+	}
+	defer cur.Close(ctx)
+
+	var out struct {
+		Total primitive.Decimal128 `bson:"total"`
+	}
+
+	if cur.Next(ctx) {
+		if err := cur.Decode(&out); err != nil {
+			m.logger.Error(
+				"mongo decode investments total failed",
+				"request_id", requestctx.RequestID(ctx),
+				"uid", userId,
+				"err", err,
+			)
+			return 0, err
+		}
+		return shared.Decimal128ToFloat(out.Total), nil
+	}
+
+	return 0, nil
 }

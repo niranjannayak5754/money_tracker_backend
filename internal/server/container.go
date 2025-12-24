@@ -11,12 +11,14 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/summary"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/user"
+    "github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
 
 	// repositories (infra)
 	categoryrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/category"
 	expenserepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/expense"
 	incomerepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/income"
 	summaryrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/summary"
+    investmentrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/investment"
 	userrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/user"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/handler"
@@ -30,6 +32,7 @@ type Container struct {
 	Income     income.Service
 	Expenses   expense.Service
 	Summary    summary.Service
+	Investment investment.Service
 
 	// middleware
 	AuthMw *middleware.AuthMiddleware
@@ -40,6 +43,7 @@ type Container struct {
 	IncomeH   *handler.IncomeHandler
 	ExpenseH  *handler.ExpenseHandler
 	SummaryH  *handler.SummaryHandler
+	InvestmentH *handler.InvestmentHandler
 }
 
 func BuildContainer(
@@ -55,12 +59,14 @@ func BuildContainer(
 	incomeRepo := incomerepo.New(db, logger)
 	expenseRepo := expenserepo.New(db, logger)
 	summaryRepo := summaryrepo.New(db, logger)
+	investmentRepo := investmentrepo.New(db, logger)
 
 	userSvc := user.NewService(userRepo)
 	categorySvc := category.NewService(categoryRepo)
 	incomeSvc := income.NewService(incomeRepo)
 	expenseSvc := expense.NewService(expenseRepo, categoryRepo)
 	summarySvc := summary.NewService(summaryRepo)
+	investmentSvc := investment.NewService(investmentRepo)
 
 	authMw := middleware.NewAuthMiddleware(cfg.JWTSecret)
 
@@ -69,20 +75,23 @@ func BuildContainer(
 	incomeH := handler.NewIncomeHandler(incomeSvc, logger)
 	expenseH := handler.NewExpenseHandler(expenseSvc, logger)
 	summaryH := handler.NewSummaryHandler(summarySvc, logger)
+	investmentH := handler.NewInvestmentHandler(investmentSvc, logger)
 
 	return &Container{
-		Users:      userSvc,
-		Categories: categorySvc,
-		Income:     incomeSvc,
-		Expenses:   expenseSvc,
-		Summary:    summarySvc,
+		Users:       userSvc,
+		Categories:  categorySvc,
+		Income:      incomeSvc,
+		Expenses:    expenseSvc,
+		Summary:     summarySvc,
+		Investment:  investmentSvc,
 
 		AuthMw: authMw,
 
-		AuthH:     authH,
-		CategoryH: categoryH,
-		IncomeH:   incomeH,
-		ExpenseH:  expenseH,
-		SummaryH:  summaryH,
+		AuthH:       authH,
+		CategoryH:   categoryH,
+		IncomeH:     incomeH,
+		ExpenseH:    expenseH,
+		SummaryH:    summaryH,
+		InvestmentH: investmentH,
 	}
 }
