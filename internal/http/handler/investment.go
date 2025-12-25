@@ -27,6 +27,7 @@ func NewInvestmentHandler(svc investment.Service, logger *slog.Logger) *Investme
 
 func (h *InvestmentHandler) Routes() http.Handler {
 	r := chi.NewRouter()
+	r.Get("/types", h.types)
 	r.Get("/", h.list)
 	r.Post("/", h.create)
 	r.Put("/{id}", h.update)
@@ -41,7 +42,7 @@ func (h *InvestmentHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var in struct {
-		Type       investment.Type     `json:"type"`
+		Type       string              `json:"type"`
 		Instrument string              `json:"instrument"`
 		Amount     float64             `json:"amount"`
 		Date       shared.FlexibleTime `json:"date"`
@@ -94,6 +95,16 @@ func (h *InvestmentHandler) list(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, items)
 }
 
+func (h *InvestmentHandler) types(w http.ResponseWriter, r *http.Request) {
+	vals, err := h.svc.ListTypes(r.Context())
+	if err != nil {
+		h.logger.Error("investment.types failed", "request_id", requestctx.RequestID(r.Context()), "err", err)
+		response.WriteError(w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, vals)
+}
+
 func (h *InvestmentHandler) update(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUID(w, r)
 	if !ok {
@@ -103,11 +114,11 @@ func (h *InvestmentHandler) update(w http.ResponseWriter, r *http.Request) {
 	invID := common.InvestmentID(chi.URLParam(r, "id"))
 
 	var in struct {
-		Type       *investment.Type `json:"type"`
-		Instrument *string          `json:"instrument"`
-		Amount     *float64         `json:"amount"`
-		Date       *time.Time       `json:"date"`
-		Notes      *string          `json:"notes"`
+		Type       *string    `json:"type"`
+		Instrument *string    `json:"instrument"`
+		Amount     *float64   `json:"amount"`
+		Date       *time.Time `json:"date"`
+		Notes      *string    `json:"notes"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {

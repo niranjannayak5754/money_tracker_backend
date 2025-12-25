@@ -14,6 +14,7 @@ type Service interface {
 	List(ctx context.Context, userID common.UserID, month string) ([]Model, error)
 	Update(ctx context.Context, userID common.UserID, id common.InvestmentID, in UpdateInput) error
 	Delete(ctx context.Context, userID common.UserID, id common.InvestmentID) error
+	ListTypes(ctx context.Context) ([]TypeDoc, error)
 }
 
 type service struct {
@@ -25,7 +26,7 @@ func NewService(repo Repository) Service {
 }
 
 type CreateInput struct {
-	Type       Type
+	Type       string
 	Instrument string
 	Amount     float64
 	Date       time.Time
@@ -33,7 +34,7 @@ type CreateInput struct {
 }
 
 type UpdateInput struct {
-	Type       *Type
+	Type       *string
 	Instrument *string
 	Amount     *float64
 	Date       *time.Time
@@ -45,18 +46,27 @@ func (s *service) Create(ctx context.Context, userID common.UserID, in CreateInp
 		return Model{}, apperr.ValidationErr("amount must be greater than zero")
 	}
 
+	displayType, err := s.validateType(ctx, in.Type)
+	if err != nil {
+		return Model{}, err
+	}
+
 	now := time.Now().UTC()
 
 	rec := Model{
-		ID:         "",
-		UserID:     userID,
-		Type:       in.Type,
-		Instrument: in.Instrument,
-		Amount:     in.Amount,
-		Date:       shared.ChooseDate(in.Date),
-		Notes:      in.Notes,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:              "",
+		UserID:          userID,
+		Type:            in.Type,
+		DisplayType:     displayType,
+		Instrument:      in.Instrument,
+		Amount:          in.Amount,
+		RetrievedAmount: 0,
+		RealizedPnl:     0,
+		Status:          StatusActive,
+		Date:            shared.ChooseDate(in.Date),
+		Notes:           in.Notes,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	if err := s.repo.Create(ctx, rec); err != nil {
@@ -84,7 +94,12 @@ func (s *service) Update(ctx context.Context, userID common.UserID, id common.In
 	set := map[string]any{"updated_at": time.Now().UTC()}
 
 	if in.Type != nil {
+		displayType, err := s.validateType(ctx, *in.Type)
+		if err != nil {
+			return err
+		}
 		set["type"] = *in.Type
+		set["display_type"] = displayType
 	}
 	if in.Instrument != nil {
 		set["instrument"] = *in.Instrument
@@ -110,6 +125,38 @@ func (s *service) Update(ctx context.Context, userID common.UserID, id common.In
 		return apperr.NotFoundErr("investment not found")
 	}
 	return nil
+}
+
+func (s *service) ListTypes(ctx context.Context) ([]TypeDoc, error) {
+	types, err := s.repo.GetTypes(ctx)
+	if err != nil {
+		return nil, apperr.InternalErr("failed to fetch investment types", err)
+	}
+
+	if types == nil {
+		return []TypeDoc{}, nil
+	}
+
+	return types, nil
+}
+
+func (s *service) validateType(ctx context.Context, typ string) (string, error) {
+	if typ == "" {
+		return "", apperr.ValidationErr("type is required")
+	}
+	types, err := s.repo.GetTypes(ctx)
+	if err != nil {
+		return "", apperr.InternalErr("failed to validate investment type", err)
+	}
+	if len(types) == 0 {
+		return "", apperr.ValidationErr("no investment types available")
+	}
+	for _, t := range types {
+		if t.Key == typ && t.Active {
+			return t.Name, nil
+		}
+	}
+	return "", apperr.ValidationErr("invalid investment type")
 }
 
 func (s *service) Delete(ctx context.Context, userID common.UserID, id common.InvestmentID) error {

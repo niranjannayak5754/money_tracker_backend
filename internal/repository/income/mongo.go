@@ -107,13 +107,9 @@ func (m *MongoRepo) ListByMonth(
 		return nil, err
 	}
 
-	filter := bson.M{
-		"user_id": uid,
-		"date": bson.M{
-			"$gte": start,
-			"$lt":  end,
-		},
-		"deleted_at": bson.M{"$exists": false},
+	filter := bson.M{"user_id": uid, "deleted_at": bson.M{"$exists": false}}
+	if !start.IsZero() || !end.IsZero() {
+		filter["date"] = bson.M{"$gte": start, "$lt": end}
 	}
 
 	opts := options.Find().

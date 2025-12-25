@@ -46,12 +46,13 @@ func (m *MongoRepo) IncomeTotal(
 		return 0, err
 	}
 
+	match := bson.M{"user_id": uid, "deleted_at": bson.M{"$exists": false}}
+	if !start.IsZero() || !end.IsZero() {
+		match["date"] = bson.M{"$gte": start, "$lt": end}
+	}
+
 	cur, err := m.incomeCol.Aggregate(ctx, bson.A{
-		bson.D{{Key: "$match", Value: bson.M{
-			"user_id":    uid,
-			"date":       bson.M{"$gte": start, "$lt": end},
-			"deleted_at": bson.M{"$exists": false},
-		}}},
+		bson.D{{Key: "$match", Value: match}},
 		bson.D{{Key: "$group", Value: bson.M{
 			"_id":   nil,
 			"total": bson.M{"$sum": "$amount"},
@@ -99,12 +100,13 @@ func (m *MongoRepo) ExpenseTotals(
 		return 0, nil, err
 	}
 
+	match := bson.M{"user_id": uid, "deleted_at": bson.M{"$exists": false}}
+	if !start.IsZero() || !end.IsZero() {
+		match["date"] = bson.M{"$gte": start, "$lt": end}
+	}
+
 	cur, err := m.expensesCol.Aggregate(ctx, bson.A{
-		bson.D{{Key: "$match", Value: bson.M{
-			"user_id":    uid,
-			"date":       bson.M{"$gte": start, "$lt": end},
-			"deleted_at": bson.M{"$exists": false},
-		}}},
+		bson.D{{Key: "$match", Value: match}},
 		bson.D{{Key: "$group", Value: bson.M{
 			"_id":   "$category_id",
 			"total": bson.M{"$sum": "$amount"},
@@ -166,24 +168,30 @@ func (m *MongoRepo) ExpenseTotals(
 	return total, cats, nil
 }
 
-func (m *MongoRepo) InvestmentTotal(
+func (m *MongoRepo) InvestmentTotals(
 	ctx context.Context,
 	userId common.UserID,
 	start, end time.Time,
-) (float64, error) {
+) (float64, float64, error) {
 
 	uid, err := mongohelper.ObjectIDFromHex(string(userId))
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
+	match := bson.M{"user_id": uid, "deleted_at": bson.M{"$exists": false}}
+	if !start.IsZero() || !end.IsZero() {
+		match["date"] = bson.M{"$gte": start, "$lt": end}
+	}
+
+	// Group both sums in one aggregation: sum(amount) and sum(realized_pnl)
 	cur, err := m.investmentsCol.Aggregate(ctx, bson.A{
-		bson.D{{Key: "$match", Value: bson.M{
-			"user_id":    uid,
-			"date":       bson.M{"$gte": start, "$lt": end},
-			"deleted_at": bson.M{"$exists": false},
+		bson.D{{Key: "$match", Value: match}},
+		bson.D{{Key: "$group", Value: bson.M{
+			"_id":                nil,
+			"total_amount":       bson.M{"$sum": "$amount"},
+			"total_realized_pnl": bson.M{"$sum": "$realized_pnl"},
 		}}},
-		bson.D{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$amount"}}}},
 	})
 	if err != nil {
 		m.logger.Error(
@@ -192,12 +200,13 @@ func (m *MongoRepo) InvestmentTotal(
 			"uid", userId,
 			"err", err,
 		)
-		return 0, err
+		return 0, 0, err
 	}
 	defer cur.Close(ctx)
 
 	var out struct {
-		Total primitive.Decimal128 `bson:"total"`
+		TotalAmount   primitive.Decimal128 `bson:"total_amount"`
+		TotalRealized primitive.Decimal128 `bson:"total_realized_pnl"`
 	}
 
 	if cur.Next(ctx) {
@@ -208,10 +217,10 @@ func (m *MongoRepo) InvestmentTotal(
 				"uid", userId,
 				"err", err,
 			)
-			return 0, err
+			return 0, 0, err
 		}
-		return shared.Decimal128ToFloat(out.Total), nil
+		return shared.Decimal128ToFloat(out.TotalAmount), shared.Decimal128ToFloat(out.TotalRealized), nil
 	}
 
-	return 0, nil
+	return 0, 0, nil
 }

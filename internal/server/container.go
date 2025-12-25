@@ -9,16 +9,16 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/category"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/expense"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/summary"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/user"
-    "github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
 
 	// repositories (infra)
 	categoryrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/category"
 	expenserepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/expense"
 	incomerepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/income"
+	investmentrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/investment"
 	summaryrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/summary"
-    investmentrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/investment"
 	userrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/user"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/handler"
@@ -38,11 +38,11 @@ type Container struct {
 	AuthMw *middleware.AuthMiddleware
 
 	// handlers
-	AuthH     *handler.AuthHandler
-	CategoryH *handler.CategoryHandler
-	IncomeH   *handler.IncomeHandler
-	ExpenseH  *handler.ExpenseHandler
-	SummaryH  *handler.SummaryHandler
+	AuthH       *handler.AuthHandler
+	CategoryH   *handler.CategoryHandler
+	IncomeH     *handler.IncomeHandler
+	ExpenseH    *handler.ExpenseHandler
+	SummaryH    *handler.SummaryHandler
 	InvestmentH *handler.InvestmentHandler
 }
 
@@ -78,12 +78,12 @@ func BuildContainer(
 	investmentH := handler.NewInvestmentHandler(investmentSvc, logger)
 
 	return &Container{
-		Users:       userSvc,
-		Categories:  categorySvc,
-		Income:      incomeSvc,
-		Expenses:    expenseSvc,
-		Summary:     summarySvc,
-		Investment:  investmentSvc,
+		Users:      userSvc,
+		Categories: categorySvc,
+		Income:     incomeSvc,
+		Expenses:   expenseSvc,
+		Summary:    summarySvc,
+		Investment: investmentSvc,
 
 		AuthMw: authMw,
 

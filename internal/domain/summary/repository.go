@@ -20,9 +20,10 @@ type Repository interface {
 		start, end time.Time,
 	) (float64, []CategoryBreakdown, error)
 
-	InvestmentTotal(
+	// InvestmentTotals returns two values: total invested amount and total realized PnL
+	InvestmentTotals(
 		ctx context.Context,
 		userID common.UserID,
 		start, end time.Time,
-	) (float64, error)
+	) (float64, float64, error)
 }
