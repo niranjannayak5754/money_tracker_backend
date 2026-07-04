@@ -1,8 +1,12 @@
 openapi: 3.0.3
 info:
   title: Money Tracker API
-  description: Personal finance tracker backend with categories, income, expenses, summary reporting.
-  version: "1.0.0"
+  description: >
+    Personal finance tracker backend: categories, income, expenses, investments
+    (with close/withdraw and XIRR), cash/bank accounts, debts/loans, recurring
+    transactions, budgets, savings goals, net worth (current + history), and
+    in-app-only notifications (no email/push/SMS).
+  version: "2.0.0"
 
 servers:
   - url: /
@@ -20,8 +24,22 @@ tags:
     description: Income entries
   - name: expenses
     description: Expense entries
+  - name: investment
+    description: Investments — create/update/close/withdraw, types, XIRR
+  - name: bank-accounts
+    description: Cash / bank account balances
+  - name: debts
+    description: Debt / loan tracking and payments
+  - name: recurring
+    description: Recurring transaction templates
+  - name: budgets
+    description: Per-category and overall spend budgets
+  - name: goals
+    description: Savings goals linked to a bank account or investment
+  - name: notifications
+    description: In-app notifications (no email/push/SMS)
   - name: summary
-    description: Reporting and summaries
+    description: Reporting, net worth, and summaries
 
 components:
   securitySchemes:
@@ -29,22 +47,552 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid, or expired access token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    BadRequest:
+      description: Invalid request payload or validation failure
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        message: { type: string }
+        request_id: { type: string }
+
+    # ---- auth ----
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password:
+          type: string
+          minLength: 8
+          description: Must contain at least one letter and one digit.
+    RegisterResponse:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: Short-lived JWT (30 minutes).
+        refresh_token:
+          type: string
+          description: Opaque, DB-backed, rotates on every use (30 days).
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+    ResetPasswordRequest:
+      type: object
+      required: [old_password, new_password]
+      properties:
+        old_password: { type: string }
+        new_password:
+          type: string
+          minLength: 8
+          description: Must contain at least one letter and one digit.
+    UserProfile:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+        created_at: { type: string, format: date-time }
+
+    # ---- category ----
+    Category:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [expense, income] }
+        color: { type: string, example: "#FF5733" }
+        icon: { type: string, example: "🛒" }
+        archived: { type: boolean }
+        created_at: { type: string, format: date-time }
+    CategoryCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [expense, income], default: expense }
+        color: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
+        icon: { type: string }
+    CategoryUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        color: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
+        icon: { type: string }
+        archived:
+          type: boolean
+          description: >
+            Setting true is blocked (400) if non-deleted expenses still
+            reference this category, unless reassign_to is also supplied.
+        reassign_to:
+          type: string
+          description: Category ID to bulk-move referencing expenses to before archiving.
+
+    # ---- income ----
+    Income:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        amount: { type: number }
+        date: { type: string, format: date-time }
+        source: { type: string }
+        notes: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    IncomeCreateRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount: { type: number }
+        date: { type: string, format: date-time }
+        source: { type: string }
+        notes: { type: string }
+    IncomeUpdateRequest:
+      type: object
+      properties:
+        amount: { type: number }
+        date: { type: string, format: date-time }
+        source: { type: string }
+        notes: { type: string }
+
+    # ---- expenses ----
+    Expense:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        amount: { type: number }
+        date: { type: string, format: date-time }
+        category_id: { type: string }
+        merchant: { type: string }
+        notes: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ExpenseCreateRequest:
+      type: object
+      required: [amount, category_id]
+      properties:
+        amount: { type: number }
+        category_id: { type: string }
+        date: { type: string, format: date-time }
+        merchant: { type: string }
+        notes: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+    ExpenseUpdateRequest:
+      type: object
+      properties:
+        amount: { type: number }
+        category_id: { type: string }
+        date: { type: string, format: date-time }
+        merchant: { type: string }
+        notes: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+
+    # ---- investment ----
+    InvestmentType:
+      type: object
+      properties:
+        id: { type: string }
+        key: { type: string, example: fixed_deposit }
+        name: { type: string, example: "Fixed Deposit (FD)" }
+        active: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Investment:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        type: { type: string, description: "The investment_type key" }
+        display_type: { type: string }
+        instrument: { type: string }
+        amount:
+          type: number
+          description: Remaining cost basis still held.
+        status: { type: string, enum: [ACTIVE, PARTIALLY_RETRIEVED, CLOSED] }
+        retrieved_amount:
+          type: number
+          description: Cumulative amount withdrawn across all closes.
+        realized_pnl:
+          type: number
+          description: Cumulative realized gain/loss across all closes.
+        date: { type: string, format: date-time }
+        maturity_date: { type: string, format: date-time, nullable: true }
+        notes: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    InvestmentCreateRequest:
+      type: object
+      required: [type, amount]
+      properties:
+        type: { type: string, description: "Must be an active key from GET /investment/types" }
+        instrument: { type: string }
+        amount: { type: number }
+        date: { type: string, format: date-time }
+        maturity_date: { type: string, format: date-time }
+        notes: { type: string }
+    InvestmentUpdateRequest:
+      type: object
+      properties:
+        type: { type: string }
+        instrument: { type: string }
+        amount: { type: number }
+        date: { type: string, format: date-time }
+        maturity_date: { type: string, format: date-time }
+        notes: { type: string }
+    InvestmentCloseRequest:
+      type: object
+      required: [withdrawn_amount, cost_basis_consumed]
+      properties:
+        withdrawn_amount:
+          type: number
+          description: Total amount received back from this withdrawal.
+        cost_basis_consumed:
+          type: number
+          description: >
+            However much of the original invested amount this withdrawal
+            represents. The backend has no market pricing, so this must be
+            supplied explicitly — it cannot exceed the investment's current
+            remaining amount.
+        date: { type: string, format: date-time }
+        notes: { type: string }
+    XIRRResponse:
+      type: object
+      properties:
+        xirr:
+          type: number
+          description: >
+            Annualized return as a decimal (e.g. 0.0997 for ~10%). Computed as
+            a simplified 2-point cash flow (original investment date → today),
+            since there is no dated ledger of individual withdrawal events —
+            this understates the true return when significant withdrawals
+            happened well before today.
+
+    # ---- bank accounts ----
+    BankAccount:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        name: { type: string }
+        balance:
+          type: number
+          description: Manually entered/updated — no transaction-linked ledger.
+        interest_rate: { type: number, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    BankAccountCreateRequest:
+      type: object
+      required: [name, balance]
+      properties:
+        name: { type: string }
+        balance: { type: number, minimum: 0 }
+        interest_rate: { type: number }
+    BankAccountUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        balance: { type: number, minimum: 0 }
+        interest_rate: { type: number }
+
+    # ---- debts ----
+    Debt:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        name: { type: string }
+        principal: { type: number }
+        interest_rate: { type: number }
+        emi_amount: { type: number }
+        tenure_months: { type: integer }
+        start_date: { type: string, format: date-time }
+        outstanding_balance: { type: number }
+        total_interest_paid: { type: number }
+        status: { type: string, enum: [ACTIVE, CLOSED] }
+        notes: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DebtCreateRequest:
+      type: object
+      required: [name, principal, interest_rate]
+      properties:
+        name: { type: string }
+        principal: { type: number }
+        interest_rate: { type: number }
+        emi_amount: { type: number }
+        tenure_months: { type: integer }
+        start_date: { type: string, format: date-time }
+        notes: { type: string }
+    DebtUpdateRequest:
+      type: object
+      description: principal and start_date are immutable after creation.
+      properties:
+        name: { type: string }
+        interest_rate: { type: number }
+        emi_amount: { type: number }
+        tenure_months: { type: integer }
+        notes: { type: string }
+    DebtPaymentRequest:
+      type: object
+      required: [principal_component, interest_component]
+      properties:
+        principal_component:
+          type: number
+          description: Cannot exceed the debt's current outstanding balance.
+        interest_component: { type: number }
+        date: { type: string, format: date-time }
+        notes: { type: string }
+
+    # ---- recurring ----
+    RecurringTemplate:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        entity_type: { type: string, enum: [expense, income, investment] }
+        frequency: { type: string, enum: [monthly, yearly] }
+        day_of_month:
+          type: integer
+          description: >
+            Target day, clamped to the last day of a shorter month without
+            drifting in later months (e.g. 31st in Feb → 28th/29th, then back
+            to the 31st in March).
+        payload:
+          type: object
+          description: >
+            Shape depends on entity_type — expense needs {amount,
+            category_id, merchant?, notes?}; income needs {amount, source?,
+            notes?}; investment needs {amount, type, instrument?, notes?}.
+        start_date: { type: string, format: date-time }
+        end_date: { type: string, format: date-time, nullable: true }
+        next_run_date: { type: string, format: date-time }
+        last_run_date: { type: string, format: date-time, nullable: true }
+        active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    RecurringCreateRequest:
+      type: object
+      required: [entity_type, frequency, day_of_month, payload, start_date]
+      properties:
+        entity_type: { type: string, enum: [expense, income, investment] }
+        frequency: { type: string, enum: [monthly, yearly] }
+        day_of_month: { type: integer, minimum: 1, maximum: 31 }
+        payload: { type: object }
+        start_date: { type: string, format: date-time }
+        end_date: { type: string, format: date-time }
+    RecurringUpdateRequest:
+      type: object
+      properties:
+        day_of_month: { type: integer, minimum: 1, maximum: 31 }
+        payload: { type: object }
+        end_date: { type: string, format: date-time }
+        active: { type: boolean }
+
+    # ---- budgets ----
+    Budget:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        category_id:
+          type: string
+          nullable: true
+          description: Absent/null means an overall spend cap.
+        amount: { type: number }
+        effective_from: { type: string, example: "2026-07" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    BudgetCreateRequest:
+      type: object
+      required: [amount, effective_from]
+      properties:
+        category_id:
+          type: string
+          nullable: true
+          description: Omit or null for an overall cap.
+        amount: { type: number }
+        effective_from:
+          type: string
+          example: "2026-07"
+          description: >
+            YYYY-MM. Setting a new month creates a new effective-dated row
+            (history preserved); the same (category, month) pair upserts.
+    BudgetStatus:
+      type: object
+      description: >
+        Only present for categories with a budget configured — an unbudgeted
+        category is simply absent, not a false 0%/not-exceeded entry.
+      properties:
+        category_id:
+          type: string
+          description: Absent for the overall-cap entry.
+        budgeted: { type: number }
+        spent: { type: number }
+        percent_used: { type: number }
+        exceeded: { type: boolean }
+
+    # ---- goals ----
+    Goal:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        name: { type: string }
+        target_amount: { type: number }
+        target_date: { type: string, format: date-time, nullable: true }
+        linked_type: { type: string, enum: [bank_account, investment] }
+        linked_id: { type: string }
+        status: { type: string, enum: [active, completed, abandoned] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        current_value:
+          type: number
+          description: >
+            Live-resolved from the linked entity at read time — a bank
+            account's balance, or an investment's Amount + RetrievedAmount
+            (total ever contributed, including withdrawn amounts).
+        percent_complete:
+          type: number
+          description: Capped at 100 even when overfunded.
+        linked_entity_missing:
+          type: boolean
+          description: True if the linked bank account/investment was deleted; progress then reads as 0 rather than erroring.
+    GoalCreateRequest:
+      type: object
+      required: [name, target_amount, linked_type, linked_id]
+      properties:
+        name: { type: string }
+        target_amount: { type: number }
+        target_date: { type: string, format: date-time }
+        linked_type: { type: string, enum: [bank_account, investment] }
+        linked_id: { type: string }
+    GoalUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        target_amount: { type: number }
+        target_date: { type: string, format: date-time }
+        status: { type: string, enum: [active, completed, abandoned] }
+
+    # ---- notifications ----
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        type: { type: string, enum: [budget_exceeded, fd_maturity, bill_due] }
+        title: { type: string }
+        message: { type: string }
+        related_entity_type: { type: string }
+        related_entity_id: { type: string }
+        created_at: { type: string, format: date-time }
+        read_at: { type: string, format: date-time, nullable: true }
+        dismissed_at: { type: string, format: date-time, nullable: true }
+    UnreadCountResponse:
+      type: object
+      properties:
+        unread_count: { type: integer }
+
+    # ---- summary ----
+    SummaryResult:
+      type: object
+      properties:
+        income_total: { type: number }
+        expense_total: { type: number }
+        investment_total: { type: number }
+        savings: { type: number }
+        net_worth:
+          type: number
+          description: >
+            Current balance-sheet snapshot (bank balances + lifetime
+            investment remaining value + lifetime realized PnL − outstanding
+            debt) — independent of the month query param used for the other
+            figures in this response.
+        category_breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              category_id: { type: string }
+              category_name: { type: string }
+              total: { type: number }
+        budget_status:
+          type: array
+          items: { $ref: '#/components/schemas/BudgetStatus' }
+        overall_budget:
+          allOf: [{ $ref: '#/components/schemas/BudgetStatus' }]
+          nullable: true
     MonthlyComparison:
       type: object
       properties:
         month:
           type: string
-          example: "2025-10"
-        income:
+          example: "2026-07"
+        income: { type: number }
+        expense: { type: number }
+        investment: { type: number }
+        savings: { type: number }
+        net_worth:
           type: number
-          example: 60000
-        expense:
-          type: number
-          example: 42000
-        savings:
-          type: number
-          example: 18000
+          description: Today's net-worth snapshot, repeated for every month in the range (see /summary/networth-history for a dated breakdown).
+        budget_status:
+          type: array
+          items: { $ref: '#/components/schemas/BudgetStatus' }
+        overall_budget:
+          allOf: [{ $ref: '#/components/schemas/BudgetStatus' }]
+          nullable: true
+    NetWorthPoint:
+      type: object
+      description: >
+        Cash always reflects today's balance for every point (no historical
+        ledger); investments/debt are filtered by their own dated field
+        (correctly excluded before they existed) but still contribute
+        current running totals rather than a true historical value.
+      properties:
+        month: { type: string, example: "2026-07" }
+        cash: { type: number }
+        investments: { type: number }
+        realized_pnl: { type: number }
+        debt: { type: number }
+        net_worth: { type: number }
 
 paths:
   /health:
@@ -58,84 +606,97 @@ paths:
   /auth/register:
     post:
       tags: [auth]
-      summary: Register new user
+      summary: Register a new user
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [email, password]
-              properties:
-                email: { type: string, format: email }
-                password: { type: string, minLength: 6 }
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
       responses:
         '201':
           description: User created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { description: Rate limited }
 
   /auth/login:
     post:
       tags: [auth]
-      summary: Login user and get JWT access token
+      summary: Login and receive an access + refresh token pair
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [email, password]
-              properties:
-                email: { type: string }
-                password: { type: string }
+            schema: { $ref: '#/components/schemas/LoginRequest' }
       responses:
         '200':
-          description: Token response
+          description: Token pair
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  access_token:
-                    type: string
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: Rate limited }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token for a new access + refresh token pair (rotates)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: New token pair; the old refresh token is invalidated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: Rate limited }
 
   /auth/me:
     get:
       tags: [profile]
-      summary: Fetch authenticated user's profile
+      summary: Fetch the authenticated user's profile
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: User info returned
+          description: User info
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /auth/logout:
     post:
       tags: [auth]
-      summary: Logout user (invalidate token)
+      summary: Logout — revokes all refresh tokens for the user
       security:
         - bearerAuth: []
       responses:
-        '200':
-          description: Logged out
+        '200': { description: Logged out }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /auth/reset-password:
     post:
       tags: [profile]
-      summary: reset authenticated user's password
+      summary: Change the authenticated user's password
+      description: Requires the current password; revokes all refresh tokens on success.
       security:
         - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [new_password]
-              properties:
-                new_password: { type: string, minLength: 6 }
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
       responses:
-        '200':
-          description: Password changed successfully
+        '200': { description: Password changed successfully }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /categories:
     get:
@@ -147,137 +708,107 @@ paths:
         - in: query
           name: archived
           required: false
-          schema:
-            type: boolean
+          schema: { type: boolean }
           description: |
-            Filter categories by archived status.
             - `true`  → archived categories only
             - `false` → active categories only
             - omitted → all categories
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Category' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [category]
-      summary: Create category
+      summary: Create a category
       security:
         - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [name]
-              properties:
-                name: { type: string }
-                type:
-                  type: string
-                  enum: [expense, income]
+            schema: { $ref: '#/components/schemas/CategoryCreateRequest' }
       responses:
         '201':
-          description: Category created
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /categories/{id}:
     put:
       tags: [category]
-      summary: Update category
+      summary: Update a category
+      description: >
+        Setting archived=true is blocked (400, message includes the
+        referencing-expense count) unless reassign_to is also supplied.
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       requestBody:
         required: false
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                name: { type: string }
-                archived: { type: boolean }
+            schema: { $ref: '#/components/schemas/CategoryUpdateRequest' }
       responses:
-        '200':
-          description: Updated
+        '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /income:
     get:
       tags: [income]
-      summary: List income entries for month
+      summary: List income entries for a month
       security:
         - bearerAuth: []
       parameters:
         - name: month
           in: query
-          schema: { type: string, example: "2025-01" }
+          schema: { type: string, example: "2026-07" }
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Income' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [income]
-      summary: Add income entry
+      summary: Add an income entry
       security:
         - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [amount]
-              properties:
-                amount: { type: number }
-                date: { type: string, format: date-time }
-                source: { type: string }
-                notes: { type: string }
+            schema: { $ref: '#/components/schemas/IncomeCreateRequest' }
       responses:
-        '201': { description: Created }
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Income' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
-  /expenses:
-    get:
-      tags: [expenses]
-      summary: List expenses for month
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: month
-          in: query
-          schema: { type: string }
-        - name: category
-          in: query
-          schema: { type: string }
-      responses: { '200': { description: OK } }
-
-    post:
-      tags: [expenses]
-      summary: Add expense entry
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [amount, category_id]
-              properties:
-                amount: { type: number }
-                category_id: { type: string }
-                date: { type: string, format: date-time }
-                merchant: { type: string }
-                notes: { type: string }
-                tags:
-                  type: array
-                  items: { type: string }
-      responses:
-        '201': { description: Created }
-
-  /expenses/{id}:
+  /income/{id}:
     put:
-      tags: [expenses]
-      summary: Update expense
+      tags: [income]
+      summary: Update an income entry
       security:
         - bearerAuth: []
       parameters:
@@ -285,11 +816,19 @@ paths:
           in: path
           required: true
           schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncomeUpdateRequest' }
       responses:
         '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
-      tags: [expenses]
-      summary: Delete expense
+      tags: [income]
+      summary: Soft-delete an income entry
       security:
         - bearerAuth: []
       parameters:
@@ -299,33 +838,705 @@ paths:
           schema: { type: string }
       responses:
         '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
-  /summary:
+  /expenses:
     get:
-      tags: [summary]
-      summary: Monthly income/expense summary
+      tags: [expenses]
+      summary: List expenses for a month, optionally filtered by category
       security:
         - bearerAuth: []
       parameters:
         - name: month
           in: query
+          schema: { type: string, example: "2026-07" }
+        - name: category
+          in: query
           schema: { type: string }
       responses:
-        '200': { description: Summary returned }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Expense' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [expenses]
+      summary: Add an expense entry
+      description: >
+        If this pushes the category over its budget for the month, an
+        in-app budget_exceeded notification is raised (deduped per
+        category per month) — no direct signal in this response.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExpenseCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Expense' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /expenses/{id}:
+    put:
+      tags: [expenses]
+      summary: Update an expense
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExpenseUpdateRequest' }
+      responses:
+        '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [expenses]
+      summary: Soft-delete an expense
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /investment/types:
+    get:
+      tags: [investment]
+      summary: List the controlled vocabulary of investment types
+      description: Populate any type picker from this endpoint — it's a live lookup table, don't hardcode it.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InvestmentType' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /investment/xirr:
+    get:
+      tags: [investment]
+      summary: Portfolio-blended XIRR across all of the user's investments
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/XIRRResponse' }
+        '400': { description: Not enough investment activity to compute a return }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /investment:
+    get:
+      tags: [investment]
+      summary: List investments for a month
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: month
+          in: query
+          schema: { type: string, example: "2026-07" }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Investment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [investment]
+      summary: Create an investment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvestmentCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Investment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /investment/{id}:
+    put:
+      tags: [investment]
+      summary: Update an investment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvestmentUpdateRequest' }
+      responses:
+        '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [investment]
+      summary: Soft-delete an investment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /investment/{id}/close:
+    post:
+      tags: [investment]
+      summary: Record a full or partial withdrawal
+      description: >
+        Repeatable for partial withdrawals until the remaining basis hits
+        zero; status transitions ACTIVE → PARTIALLY_RETRIEVED → CLOSED.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvestmentCloseRequest' }
+      responses:
+        '200':
+          description: Updated investment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Investment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /investment/{id}/xirr:
+    get:
+      tags: [investment]
+      summary: Single investment's annualized return
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/XIRRResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /bank-accounts:
+    get:
+      tags: [bank-accounts]
+      summary: List bank accounts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BankAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [bank-accounts]
+      summary: Create a bank account
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankAccountCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankAccount' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /bank-accounts/{id}:
+    put:
+      tags: [bank-accounts]
+      summary: Update a bank account
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankAccountUpdateRequest' }
+      responses:
+        '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [bank-accounts]
+      summary: Soft-delete a bank account
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /debts:
+    get:
+      tags: [debts]
+      summary: List debts / loans
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Debt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [debts]
+      summary: Create a debt / loan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DebtCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Debt' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /debts/{id}:
+    put:
+      tags: [debts]
+      summary: Update a debt (principal and start_date are immutable)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DebtUpdateRequest' }
+      responses:
+        '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [debts]
+      summary: Soft-delete a debt
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /debts/{id}/payments:
+    post:
+      tags: [debts]
+      summary: Record an EMI/prepayment
+      description: >
+        Caller supplies the principal/interest split from their lender's
+        amortization schedule. Auto-closes the debt when the outstanding
+        balance hits zero.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DebtPaymentRequest' }
+      responses:
+        '200':
+          description: Updated debt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Debt' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recurring:
+    get:
+      tags: [recurring]
+      summary: List recurring templates
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RecurringTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [recurring]
+      summary: Create a recurring template
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecurringCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecurringTemplate' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /recurring/{id}:
+    put:
+      tags: [recurring]
+      summary: Update a recurring template
+      description: Only affects future occurrences — already-materialized records are untouched.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecurringUpdateRequest' }
+      responses:
+        '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [recurring]
+      summary: Soft-delete a recurring template
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /budgets:
+    get:
+      tags: [budgets]
+      summary: List every raw effective-dated budget row
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Budget' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [budgets]
+      summary: Set a budget (upserts by category + effective_from)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BudgetCreateRequest' }
+      responses:
+        '200':
+          description: Set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Budget' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /budgets/{id}:
+    delete:
+      tags: [budgets]
+      summary: Delete a budget row
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /goals:
+    get:
+      tags: [goals]
+      summary: List savings goals (with live-resolved progress)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Goal' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [goals]
+      summary: Create a savings goal
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoalCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Goal' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /goals/{id}:
+    put:
+      tags: [goals]
+      summary: Update a savings goal
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoalUpdateRequest' }
+      responses:
+        '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [goals]
+      summary: Soft-delete a savings goal
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: List notifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: unread
+          in: query
+          schema: { type: boolean }
+          description: Set to true to return only unread, non-dismissed notifications.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notification' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /notifications/unread-count:
+    get:
+      tags: [notifications]
+      summary: Unread notification count (for a bell-icon badge)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnreadCountResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /notifications/{id}/read:
+    post:
+      tags: [notifications]
+      summary: Mark a notification as read (does not remove it from the list)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Marked read }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /notifications/{id}/dismiss:
+    post:
+      tags: [notifications]
+      summary: Dismiss a notification (removes it from the list)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Dismissed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /summary:
+    get:
+      tags: [summary]
+      summary: Monthly income/expense/savings + current net worth + budget status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: month
+          in: query
+          schema: { type: string, example: "2026-07" }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SummaryResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /summary/compare:
     get:
       tags: [summary]
-      summary: Compare income, expense and savings over time
+      summary: Compare income, expense, savings and budget status over recent months
       security:
         - bearerAuth: []
       parameters:
         - name: range
           in: query
           required: false
-          schema:
-            type: integer
-            default: 3
+          schema: { type: integer, default: 3, maximum: 12 }
           description: Number of months to compare
       responses:
         '200':
@@ -334,6 +1545,28 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: '#/components/schemas/MonthlyComparison'
+                items: { $ref: '#/components/schemas/MonthlyComparison' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /summary/networth-history:
+    get:
+      tags: [summary]
+      summary: Per-month net worth breakdown by asset class
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: months
+          in: query
+          required: false
+          schema: { type: integer, default: 6, maximum: 12 }
+      responses:
+        '200':
+          description: Net worth history array
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NetWorthPoint' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
