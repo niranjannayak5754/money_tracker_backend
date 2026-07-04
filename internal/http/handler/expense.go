@@ -140,12 +140,12 @@ func (h *ExpenseHandler) update(w http.ResponseWriter, r *http.Request) {
 	expenseID := common.ExpenseID(chi.URLParam(r, "id"))
 
 	var in struct {
-		Amount     *float64   `json:"amount"`
-		Date       *time.Time `json:"date"`
-		CategoryID *string    `json:"category_id"`
-		Merchant   *string    `json:"merchant"`
-		Notes      *string    `json:"notes"`
-		Tags       *[]string  `json:"tags"`
+		Amount     *float64             `json:"amount"`
+		Date       *shared.FlexibleTime `json:"date"`
+		CategoryID *string              `json:"category_id"`
+		Merchant   *string              `json:"merchant"`
+		Notes      *string              `json:"notes"`
+		Tags       *[]string            `json:"tags"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -159,13 +159,19 @@ func (h *ExpenseHandler) update(w http.ResponseWriter, r *http.Request) {
 		categoryID = &cid
 	}
 
+	var date *time.Time
+	if in.Date != nil {
+		d := in.Date.Time
+		date = &d
+	}
+
 	err := h.svc.Update(
 		r.Context(),
 		uid,
 		expenseID,
 		expense.UpdateInput{
 			Amount:     in.Amount,
-			Date:       in.Date,
+			Date:       date,
 			CategoryID: categoryID,
 			Merchant:   in.Merchant,
 			Notes:      in.Notes,

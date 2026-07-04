@@ -115,11 +115,11 @@ func (h *InvestmentHandler) update(w http.ResponseWriter, r *http.Request) {
 	invID := common.InvestmentID(chi.URLParam(r, "id"))
 
 	var in struct {
-		Type       *string    `json:"type"`
-		Instrument *string    `json:"instrument"`
-		Amount     *float64   `json:"amount"`
-		Date       *time.Time `json:"date"`
-		Notes      *string    `json:"notes"`
+		Type       *string              `json:"type"`
+		Instrument *string              `json:"instrument"`
+		Amount     *float64             `json:"amount"`
+		Date       *shared.FlexibleTime `json:"date"`
+		Notes      *string              `json:"notes"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -127,11 +127,17 @@ func (h *InvestmentHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var date *time.Time
+	if in.Date != nil {
+		d := in.Date.Time
+		date = &d
+	}
+
 	err := h.svc.Update(r.Context(), uid, invID, investment.UpdateInput{
 		Type:       in.Type,
 		Instrument: in.Instrument,
 		Amount:     in.Amount,
-		Date:       in.Date,
+		Date:       date,
 		Notes:      in.Notes,
 	})
 	if err != nil {

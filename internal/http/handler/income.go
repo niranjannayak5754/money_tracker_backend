@@ -132,15 +132,21 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 	incomeID := common.IncomeID(chi.URLParam(r, "id"))
 
 	var in struct {
-		Amount *float64   `json:"amount"`
-		Date   *time.Time `json:"date"`
-		Source *string    `json:"source"`
-		Notes  *string    `json:"notes"`
+		Amount *float64             `json:"amount"`
+		Date   *shared.FlexibleTime `json:"date"`
+		Source *string              `json:"source"`
+		Notes  *string              `json:"notes"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		response.BadReq(w, "invalid json payload")
 		return
+	}
+
+	var date *time.Time
+	if in.Date != nil {
+		d := in.Date.Time
+		date = &d
 	}
 
 	err := h.svc.Update(
@@ -149,7 +155,7 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 		incomeID,
 		income.UpdateInput{
 			Amount: in.Amount,
-			Date:   in.Date,
+			Date:   date,
 			Source: in.Source,
 			Notes:  in.Notes,
 		},
