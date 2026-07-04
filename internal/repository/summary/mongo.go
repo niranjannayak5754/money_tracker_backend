@@ -17,10 +17,12 @@ import (
 )
 
 type MongoRepo struct {
-	incomeCol      *mongo.Collection
-	expensesCol    *mongo.Collection
-	investmentsCol *mongo.Collection
-	logger         *slog.Logger
+	incomeCol       *mongo.Collection
+	expensesCol     *mongo.Collection
+	investmentsCol  *mongo.Collection
+	bankAccountsCol *mongo.Collection
+	debtsCol        *mongo.Collection
+	logger          *slog.Logger
 }
 
 func New(
@@ -28,11 +30,52 @@ func New(
 	logger *slog.Logger,
 ) summary.Repository {
 	return &MongoRepo{
-		incomeCol:      db.Collection("income"),
-		expensesCol:    db.Collection("expenses"),
-		investmentsCol: db.Collection("investments"),
-		logger:         logger.With("repo", "summary"),
+		incomeCol:       db.Collection("income"),
+		expensesCol:     db.Collection("expenses"),
+		investmentsCol:  db.Collection("investments"),
+		bankAccountsCol: db.Collection("bank_accounts"),
+		debtsCol:        db.Collection("debts"),
+		logger:          logger.With("repo", "summary"),
 	}
+}
+
+// BankBalanceTotal sums current non-deleted bank account balances for a user.
+func (m *MongoRepo) BankBalanceTotal(ctx context.Context, userID common.UserID) (float64, error) {
+	return m.sumField(ctx, m.bankAccountsCol, userID, "balance", "bank balance")
+}
+
+// DebtOutstandingTotal sums current non-deleted debts' outstanding balances for a user.
+func (m *MongoRepo) DebtOutstandingTotal(ctx context.Context, userID common.UserID) (float64, error) {
+	return m.sumField(ctx, m.debtsCol, userID, "outstanding_balance", "debt outstanding")
+}
+
+func (m *MongoRepo) sumField(ctx context.Context, col *mongo.Collection, userID common.UserID, field, label string) (float64, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return 0, err
+	}
+
+	cur, err := col.Aggregate(ctx, bson.A{
+		bson.D{{Key: "$match", Value: bson.M{"user_id": uid, "deleted_at": bson.M{"$exists": false}}}},
+		bson.D{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$" + field}}}},
+	})
+	if err != nil {
+		m.logger.Error("mongo aggregate "+label+" failed", "request_id", requestctx.RequestID(ctx), "uid", userID, "err", err)
+		return 0, err
+	}
+	defer cur.Close(ctx)
+
+	var out struct {
+		Total primitive.Decimal128 `bson:"total"`
+	}
+	if cur.Next(ctx) {
+		if err := cur.Decode(&out); err != nil {
+			return 0, err
+		}
+		return shared.Decimal128ToFloat(out.Total), nil
+	}
+
+	return 0, nil
 }
 
 func (m *MongoRepo) IncomeTotal(

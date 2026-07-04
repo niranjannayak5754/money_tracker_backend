@@ -44,9 +44,14 @@ func (s *service) Get(
 		return Result{}, apperr.InternalErr("failed to calculate expense totals", err)
 	}
 
-	investTotal, realizedPnl, err := s.repo.InvestmentTotals(ctx, userID, start, end)
+	investTotal, _, err := s.repo.InvestmentTotals(ctx, userID, start, end)
 	if err != nil {
 		return Result{}, apperr.InternalErr("failed to calculate investment totals", err)
+	}
+
+	netWorth, err := s.currentNetWorth(ctx, userID)
+	if err != nil {
+		return Result{}, err
 	}
 
 	return Result{
@@ -54,9 +59,35 @@ func (s *service) Get(
 		ExpenseTotal:      expenseTotal,
 		InvestmentTotal:   investTotal,
 		Savings:           incomeTotal - expenseTotal - investTotal,
-		NetWorth:          incomeTotal - expenseTotal + realizedPnl,
+		NetWorth:          netWorth,
 		CategoryBreakdown: breakdown,
 	}, nil
+}
+
+// currentNetWorth computes a balance-sheet snapshot as of now — bank
+// balances and investments' remaining value are current holdings, not a
+// period flow, so this deliberately ignores any month filter.
+//
+// Known v1 limitation: bank balances and debt have no historical ledger, so
+// this always reflects the current snapshot; a true point-in-time
+// reconstruction for past months is Phase 7's net-worth-history endpoint.
+func (s *service) currentNetWorth(ctx context.Context, userID common.UserID) (float64, error) {
+	bankTotal, err := s.repo.BankBalanceTotal(ctx, userID)
+	if err != nil {
+		return 0, apperr.InternalErr("failed to calculate bank balance total", err)
+	}
+
+	investAmount, realizedPnl, err := s.repo.InvestmentTotals(ctx, userID, time.Time{}, time.Time{})
+	if err != nil {
+		return 0, apperr.InternalErr("failed to calculate lifetime investment totals", err)
+	}
+
+	debtTotal, err := s.repo.DebtOutstandingTotal(ctx, userID)
+	if err != nil {
+		return 0, apperr.InternalErr("failed to calculate debt outstanding total", err)
+	}
+
+	return bankTotal + investAmount + realizedPnl - debtTotal, nil
 }
 
 func (s *service) Compare(
@@ -66,6 +97,14 @@ func (s *service) Compare(
 ) ([]MonthlyComparison, error) {
 	if months > config.TWELVE {
 		return nil, apperr.ValidationErr("months cannot be greater than 12")
+	}
+
+	// NetWorth is a current snapshot (see currentNetWorth) — computed once
+	// and reused across every historical month entry, since bank/debt
+	// balances aren't ledgered historically in v1.
+	netWorth, err := s.currentNetWorth(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -86,7 +125,7 @@ func (s *service) Compare(
 			return nil, apperr.InternalErr("failed to calculate expense totals", err)
 		}
 
-		investTotal, realizedPnl, err := s.repo.InvestmentTotals(ctx, userID, start, end)
+		investTotal, _, err := s.repo.InvestmentTotals(ctx, userID, start, end)
 		if err != nil {
 			return nil, apperr.InternalErr("failed to calculate investment totals", err)
 		}
@@ -97,7 +136,7 @@ func (s *service) Compare(
 			Expense:    expenseTotal,
 			Investment: investTotal,
 			Savings:    incomeTotal - expenseTotal - investTotal,
-			NetWorth:   incomeTotal - expenseTotal + realizedPnl,
+			NetWorth:   netWorth,
 		})
 	}
 

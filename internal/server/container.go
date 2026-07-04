@@ -8,6 +8,7 @@ import (
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/bankaccount"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/category"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/debt"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/expense"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
@@ -17,6 +18,7 @@ import (
 	// repositories (infra)
 	bankaccountrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/bankaccount"
 	categoryrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/category"
+	debtrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/debt"
 	expenserepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/expense"
 	incomerepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/income"
 	investmentrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/investment"
@@ -37,6 +39,7 @@ type Container struct {
 	Summary     summary.Service
 	Investment  investment.Service
 	BankAccount bankaccount.Service
+	Debt        debt.Service
 
 	// middleware
 	AuthMw *middleware.AuthMiddleware
@@ -49,6 +52,7 @@ type Container struct {
 	SummaryH     *handler.SummaryHandler
 	InvestmentH  *handler.InvestmentHandler
 	BankAccountH *handler.BankAccountHandler
+	DebtH        *handler.DebtHandler
 }
 
 func BuildContainer(
@@ -67,6 +71,7 @@ func BuildContainer(
 	investmentRepo := investmentrepo.New(db, logger)
 	sessionRepo := sessionrepo.New(db, logger)
 	bankAccountRepo := bankaccountrepo.New(db, logger)
+	debtRepo := debtrepo.New(db, logger)
 
 	userSvc := user.NewService(userRepo, sessionRepo)
 	categorySvc := category.NewService(categoryRepo, expenseRepo)
@@ -75,6 +80,7 @@ func BuildContainer(
 	summarySvc := summary.NewService(summaryRepo)
 	investmentSvc := investment.NewService(investmentRepo)
 	bankAccountSvc := bankaccount.NewService(bankAccountRepo)
+	debtSvc := debt.NewService(debtRepo)
 
 	authMw := middleware.NewAuthMiddleware(cfg.JWTSecret)
 
@@ -85,6 +91,7 @@ func BuildContainer(
 	summaryH := handler.NewSummaryHandler(summarySvc, logger)
 	investmentH := handler.NewInvestmentHandler(investmentSvc, logger)
 	bankAccountH := handler.NewBankAccountHandler(bankAccountSvc, logger)
+	debtH := handler.NewDebtHandler(debtSvc, logger)
 
 	return &Container{
 		Users:       userSvc,
@@ -94,6 +101,7 @@ func BuildContainer(
 		Summary:     summarySvc,
 		Investment:  investmentSvc,
 		BankAccount: bankAccountSvc,
+		Debt:        debtSvc,
 
 		AuthMw: authMw,
 
@@ -104,5 +112,6 @@ func BuildContainer(
 		SummaryH:     summaryH,
 		InvestmentH:  investmentH,
 		BankAccountH: bankAccountH,
+		DebtH:        debtH,
 	}
 }

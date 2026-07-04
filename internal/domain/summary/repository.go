@@ -26,4 +26,12 @@ type Repository interface {
 		userID common.UserID,
 		start, end time.Time,
 	) (float64, float64, error)
+
+	// BankBalanceTotal sums current non-deleted bank account balances.
+	// Not date-scoped — a balance is a snapshot, not a period flow.
+	BankBalanceTotal(ctx context.Context, userID common.UserID) (float64, error)
+
+	// DebtOutstandingTotal sums current non-deleted debts' outstanding
+	// balances. Not date-scoped, for the same reason as BankBalanceTotal.
+	DebtOutstandingTotal(ctx context.Context, userID common.UserID) (float64, error)
 }

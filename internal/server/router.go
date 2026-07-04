@@ -41,6 +41,7 @@ func RegisterRoutesV2(r chi.Router, c *Container) {
 		priv.Mount("/expenses", c.ExpenseH.Routes())
 		priv.Mount("/investment", c.InvestmentH.Routes())
 		priv.Mount("/bank-accounts", c.BankAccountH.Routes())
+		priv.Mount("/debts", c.DebtH.Routes())
 		priv.Get("/summary", c.SummaryH.Get)
 		priv.Get("/summary/compare", c.SummaryH.Compare)
 	})
