@@ -9,6 +9,8 @@ require (
 	golang.org/x/crypto v0.27.0
 )
 
+require github.com/joho/godotenv v1.5.1
+
 require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.6.0

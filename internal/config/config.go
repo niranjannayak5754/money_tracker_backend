@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -13,6 +15,10 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	// Loads .env into the process environment if present; does not override
+	// vars already set (e.g. in production, where .env doesn't exist).
+	_ = godotenv.Load()
+
 	cfg := Config{
 		HTTPAddr:  env("HTTP_ADDR", ":8080"),
 		MongoURI:  os.Getenv("MONGO_URI"),
