@@ -88,15 +88,15 @@ type mongoInvestment struct {
 	DeletedBy   *primitive.ObjectID  `bson:"deleted_by,omitempty"`
 }
 
-func (m *MongoRepo) Create(ctx context.Context, rec investment.Model) error {
+func (m *MongoRepo) Create(ctx context.Context, rec investment.Model) (common.InvestmentID, error) {
 	uid, err := mongohelper.ObjectIDFromHex(string(rec.UserID))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", rec.Amount))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	retrievedDec, _ := primitive.ParseDecimal128(fmt.Sprintf("%.2f", rec.RetrievedAmount))
@@ -136,7 +136,10 @@ func (m *MongoRepo) Create(ctx context.Context, rec investment.Model) error {
 		},
 	})
 
-	return err
+	if err != nil {
+		return "", err
+	}
+	return common.InvestmentID(doc.ID.Hex()), nil
 }
 
 func (m *MongoRepo) ListByMonth(ctx context.Context, userId common.UserID, start, end time.Time) ([]investment.Model, error) {

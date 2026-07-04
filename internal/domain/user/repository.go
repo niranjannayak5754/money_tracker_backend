@@ -7,7 +7,7 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, u Model) error
+	Create(ctx context.Context, u Model) (common.UserID, error)
 	FindByEmail(ctx context.Context, email string) (*Model, error)
 	FindByID(ctx context.Context, id common.UserID) (*Model, error)
 	UpdatePasswordHash(ctx context.Context, id common.UserID, hash []byte) error

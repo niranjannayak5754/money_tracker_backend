@@ -25,15 +25,10 @@ func TestUpdate_ConvertsAmountToDecimal128AndRoundTrips(t *testing.T) {
 		Status:      investment.StatusActive,
 		Date:        time.Now().UTC(),
 	}
-	if err := repo.Create(ctx, rec); err != nil {
+	id, err := repo.Create(ctx, rec)
+	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
-
-	items, err := repo.ListByMonth(ctx, uid, time.Time{}, time.Time{})
-	if err != nil || len(items) != 1 {
-		t.Fatalf("expected 1 item after create, got %d items, err=%v", len(items), err)
-	}
-	id := items[0].ID
 
 	// Regression: Update used to write a raw float64 into the amount field
 	// instead of Decimal128, which broke decoding on the next List call.
@@ -45,7 +40,7 @@ func TestUpdate_ConvertsAmountToDecimal128AndRoundTrips(t *testing.T) {
 		t.Fatalf("update reported no match")
 	}
 
-	items, err = repo.ListByMonth(ctx, uid, time.Time{}, time.Time{})
+	items, err := repo.ListByMonth(ctx, uid, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("list after update failed (Decimal128 type regression): %v", err)
 	}
@@ -68,15 +63,10 @@ func TestUpdate_SoftDeletedRecordNotEditable(t *testing.T) {
 		Status:      investment.StatusActive,
 		Date:        time.Now().UTC(),
 	}
-	if err := repo.Create(ctx, rec); err != nil {
+	id, err := repo.Create(ctx, rec)
+	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
-
-	items, err := repo.ListByMonth(ctx, uid, time.Time{}, time.Time{})
-	if err != nil || len(items) != 1 {
-		t.Fatalf("expected 1 item after create, got %d items, err=%v", len(items), err)
-	}
-	id := items[0].ID
 
 	deleted, err := repo.Delete(ctx, uid, id)
 	if err != nil || !deleted {

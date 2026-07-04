@@ -47,11 +47,11 @@ type mongoCategory struct {
 func (m *MongoRepo) Create(
 	ctx context.Context,
 	cat category.Model,
-) error {
+) (common.CategoryID, error) {
 
 	uid, err := mongohelper.ObjectIDFromHex(string(cat.UserID))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	doc := mongoCategory{
@@ -71,7 +71,7 @@ func (m *MongoRepo) Create(
 			"uid", cat.UserID,
 			"err", err,
 		)
-		return err
+		return "", err
 	}
 
 	_ = m.audit.Write(ctx, auditrepo.Entry{
@@ -85,7 +85,7 @@ func (m *MongoRepo) Create(
 		},
 	})
 
-	return nil
+	return common.CategoryID(doc.ID.Hex()), nil
 }
 
 // List returns all categories for a user.

@@ -82,9 +82,11 @@ func (s *service) Create(
 		UpdatedAt:  now,
 	}
 
-	if err := s.repo.Create(ctx, exp); err != nil {
+	id, err := s.repo.Create(ctx, exp)
+	if err != nil {
 		return Model{}, apperr.InternalErr("failed to create expense", err)
 	}
+	exp.ID = id
 
 	return exp, nil
 }

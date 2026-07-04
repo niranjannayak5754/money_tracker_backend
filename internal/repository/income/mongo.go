@@ -49,15 +49,15 @@ type mongoIncome struct {
 	DeletedBy *primitive.ObjectID  `bson:"deleted_by,omitempty"`
 }
 
-func (m *MongoRepo) Create(ctx context.Context, rec income.Model) error {
+func (m *MongoRepo) Create(ctx context.Context, rec income.Model) (common.IncomeID, error) {
 	uid, err := mongohelper.ObjectIDFromHex(string(rec.UserID))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", rec.Amount))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	doc := mongoIncome{
@@ -93,7 +93,10 @@ func (m *MongoRepo) Create(ctx context.Context, rec income.Model) error {
 			"notes":   doc.Notes,
 		},
 	})
-	return err
+	if err != nil {
+		return "", err
+	}
+	return common.IncomeID(doc.ID.Hex()), nil
 }
 
 func (m *MongoRepo) ListByMonth(

@@ -103,9 +103,11 @@ func (s *service) Register(
 		CreatedAt: time.Now().UTC(),
 	}
 
-	if err := s.repo.Create(ctx, u); err != nil {
+	id, err := s.repo.Create(ctx, u)
+	if err != nil {
 		return Model{}, apperr.ConflictErr("email already registered")
 	}
+	u.ID = id
 
 	return u, nil
 }

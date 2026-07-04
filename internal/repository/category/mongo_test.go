@@ -25,15 +25,13 @@ func TestCreateAndUpdate_WriteAuditEntries(t *testing.T) {
 
 	// Regression: category previously had zero audit logging, unlike every
 	// other domain (expense/income/investment).
-	if err := repo.Create(ctx, cat); err != nil {
+	id, err := repo.Create(ctx, cat)
+	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
-
-	items, err := repo.List(ctx, uid, nil)
-	if err != nil || len(items) != 1 {
-		t.Fatalf("expected 1 category after create, got %d, err=%v", len(items), err)
+	if id == "" {
+		t.Fatalf("expected Create to return a generated category id")
 	}
-	id := items[0].ID
 
 	auditCol := db.Collection("audit_logs")
 

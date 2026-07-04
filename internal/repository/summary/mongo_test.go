@@ -37,7 +37,7 @@ func TestExpenseTotals_PrecisionMatchesExactSum(t *testing.T) {
 	}
 
 	for _, a := range amounts {
-		if err := expRepo.Create(ctx, expense.Model{
+		if _, err := expRepo.Create(ctx, expense.Model{
 			UserID:     uid,
 			Amount:     a.amount,
 			Date:       now,

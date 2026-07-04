@@ -7,7 +7,7 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, m Model) error
+	Create(ctx context.Context, m Model) (common.CategoryID, error)
 
 	Update(
 		ctx context.Context,

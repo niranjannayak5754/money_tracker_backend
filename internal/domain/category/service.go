@@ -120,12 +120,14 @@ func (s *service) Create(
 		CreatedAt: time.Now().UTC(),
 	}
 
-	if err := s.repo.Create(ctx, cat); err != nil {
+	id, err := s.repo.Create(ctx, cat)
+	if err != nil {
 		return Model{}, apperr.InternalErr(
 			"failed to create category",
 			err,
 		)
 	}
+	cat.ID = id
 
 	return cat, nil
 }

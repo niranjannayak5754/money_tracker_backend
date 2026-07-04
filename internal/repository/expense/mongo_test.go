@@ -27,15 +27,13 @@ func TestUpdate_SoftDeletedRecordNotEditable(t *testing.T) {
 		CategoryID: catID,
 		Merchant:   "Test Store",
 	}
-	if err := repo.Create(ctx, rec); err != nil {
+	id, err := repo.Create(ctx, rec)
+	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
-
-	items, err := repo.ListByMonth(ctx, uid, time.Time{}, time.Time{}, nil)
-	if err != nil || len(items) != 1 {
-		t.Fatalf("expected 1 item after create, got %d items, err=%v", len(items), err)
+	if id == "" {
+		t.Fatalf("expected Create to return a generated expense id")
 	}
-	id := items[0].ID
 
 	deleted, err := repo.Delete(ctx, uid, id)
 	if err != nil || !deleted {

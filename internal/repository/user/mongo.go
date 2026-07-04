@@ -33,25 +33,14 @@ func New(
 func (m *MongoRepo) Create(
 	ctx context.Context,
 	u user.Model,
-) error {
+) (common.UserID, error) {
 
-	// map domain model to mongo document
-	doc := struct {
-		ID        primitive.ObjectID  `bson:"_id"`
-		Email     string              `bson:"email"`
-		PassHash  []byte              `bson:"pass_hash"`
-		CreatedAt primitive.Timestamp `bson:"created_at"` // placeholder, will be ignored
-	}{}
-
-	// create a new ObjectID for the user document
-	doc.ID = primitive.NewObjectID()
-	doc.Email = u.Email
-	doc.PassHash = u.PassHash
+	id := primitive.NewObjectID()
 
 	_, err := m.col.InsertOne(ctx, bson.M{
-		"_id":        doc.ID,
-		"email":      doc.Email,
-		"pass_hash":  doc.PassHash,
+		"_id":        id,
+		"email":      u.Email,
+		"pass_hash":  u.PassHash,
 		"created_at": u.CreatedAt,
 	})
 	if err != nil {
@@ -60,10 +49,10 @@ func (m *MongoRepo) Create(
 			"email", u.Email,
 			"err", err,
 		)
-		return err
+		return "", err
 	}
 
-	return nil
+	return common.UserID(id.Hex()), nil
 }
 
 func (m *MongoRepo) FindByEmail(

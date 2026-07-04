@@ -28,18 +28,18 @@ func newFakeUserRepo() *fakeUserRepo {
 	return &fakeUserRepo{byID: map[common.UserID]*Model{}, byEmail: map[string]*Model{}}
 }
 
-func (f *fakeUserRepo) Create(ctx context.Context, u Model) error {
+func (f *fakeUserRepo) Create(ctx context.Context, u Model) (common.UserID, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, exists := f.byEmail[u.Email]; exists {
-		return fmt.Errorf("duplicate email")
+		return "", fmt.Errorf("duplicate email")
 	}
 	f.nextID++
 	u.ID = common.UserID(fmt.Sprintf("user-%d", f.nextID))
 	cp := u
 	f.byID[u.ID] = &cp
 	f.byEmail[u.Email] = &cp
-	return nil
+	return u.ID, nil
 }
 
 func (f *fakeUserRepo) FindByEmail(ctx context.Context, email string) (*Model, error) {
@@ -136,11 +136,11 @@ func mustCreateUser(t *testing.T, repo *fakeUserRepo, email, password string) co
 		t.Fatalf("bcrypt hash failed: %v", err)
 	}
 	u := Model{Email: email, PassHash: hash, CreatedAt: time.Now().UTC()}
-	if err := repo.Create(context.Background(), u); err != nil {
+	id, err := repo.Create(context.Background(), u)
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
-	created, _ := repo.FindByEmail(context.Background(), email)
-	return created.ID
+	return id
 }
 
 // --- regression tests ---

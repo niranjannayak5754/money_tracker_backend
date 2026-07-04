@@ -8,7 +8,7 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, m Model) error
+	Create(ctx context.Context, m Model) (common.ExpenseID, error)
 	ListByMonth(
 		ctx context.Context,
 		userID common.UserID,

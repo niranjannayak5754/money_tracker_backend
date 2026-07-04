@@ -51,21 +51,21 @@ type mongoExpense struct {
 func (m *mongoRepo) Create(
 	ctx context.Context,
 	exp expense.Model,
-) error {
+) (common.ExpenseID, error) {
 	uid, err := mongohelper.ObjectIDFromHex(string(exp.UserID))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// convert amount to Decimal128
 	dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", exp.Amount))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	cid, err := mongohelper.ObjectIDFromHex(string(exp.CategoryID))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	doc := mongoExpense{
@@ -107,7 +107,10 @@ func (m *mongoRepo) Create(
 		},
 	})
 
-	return err
+	if err != nil {
+		return "", err
+	}
+	return common.ExpenseID(doc.ID.Hex()), nil
 }
 
 // ListByMonth returns expenses for a user within a month and optional category.

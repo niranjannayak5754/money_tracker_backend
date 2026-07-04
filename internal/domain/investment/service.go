@@ -69,9 +69,11 @@ func (s *service) Create(ctx context.Context, userID common.UserID, in CreateInp
 		UpdatedAt:       now,
 	}
 
-	if err := s.repo.Create(ctx, rec); err != nil {
+	id, err := s.repo.Create(ctx, rec)
+	if err != nil {
 		return Model{}, apperr.InternalErr("failed to create investment", err)
 	}
+	rec.ID = id
 
 	return rec, nil
 }
