@@ -9,3 +9,4 @@ type SessionID string
 type BankAccountID string
 type DebtID string
 type RecurringID string
+type BudgetID string

@@ -6,6 +6,7 @@ import (
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/budget"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 )
@@ -16,11 +17,65 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo    Repository
+	budgets budget.Service
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, budgets budget.Service) Service {
+	return &service{repo: repo, budgets: budgets}
+}
+
+// buildBudgetStatus resolves the effective budget for month and joins it
+// against the category spend breakdown — including budgeted categories
+// with zero spend so far, not just ones that already have expenses.
+func (s *service) buildBudgetStatus(
+	ctx context.Context,
+	userID common.UserID,
+	month string,
+	expenseTotal float64,
+	breakdown []CategoryBreakdown,
+) ([]BudgetStatus, *BudgetStatus, error) {
+	resolved, err := s.budgets.ResolveForMonth(ctx, userID, month)
+	if err != nil {
+		return nil, nil, apperr.InternalErr("failed to resolve budgets", err)
+	}
+
+	spentByCategory := make(map[string]float64, len(breakdown))
+	for _, cb := range breakdown {
+		spentByCategory[cb.CategoryID] = cb.Total
+	}
+
+	var statuses []BudgetStatus
+	for cid, budgeted := range resolved.ByCategory {
+		spent := spentByCategory[string(cid)]
+		var percent float64
+		if budgeted > 0 {
+			percent = spent / budgeted * 100
+		}
+		statuses = append(statuses, BudgetStatus{
+			CategoryID:  string(cid),
+			Budgeted:    budgeted,
+			Spent:       spent,
+			PercentUsed: percent,
+			Exceeded:    spent > budgeted,
+		})
+	}
+
+	var overall *BudgetStatus
+	if resolved.Overall != nil {
+		var percent float64
+		if *resolved.Overall > 0 {
+			percent = expenseTotal / *resolved.Overall * 100
+		}
+		overall = &BudgetStatus{
+			Budgeted:    *resolved.Overall,
+			Spent:       expenseTotal,
+			PercentUsed: percent,
+			Exceeded:    expenseTotal > *resolved.Overall,
+		}
+	}
+
+	return statuses, overall, nil
 }
 
 func (s *service) Get(
@@ -54,6 +109,15 @@ func (s *service) Get(
 		return Result{}, err
 	}
 
+	var budgetStatus []BudgetStatus
+	var overallBudget *BudgetStatus
+	if month != "" {
+		budgetStatus, overallBudget, err = s.buildBudgetStatus(ctx, userID, month, expenseTotal, breakdown)
+		if err != nil {
+			return Result{}, err
+		}
+	}
+
 	return Result{
 		IncomeTotal:       incomeTotal,
 		ExpenseTotal:      expenseTotal,
@@ -61,6 +125,8 @@ func (s *service) Get(
 		Savings:           incomeTotal - expenseTotal - investTotal,
 		NetWorth:          netWorth,
 		CategoryBreakdown: breakdown,
+		BudgetStatus:      budgetStatus,
+		OverallBudget:     overallBudget,
 	}, nil
 }
 
@@ -120,7 +186,7 @@ func (s *service) Compare(
 			return nil, apperr.InternalErr("failed to calculate income total", err)
 		}
 
-		expenseTotal, _, err := s.repo.ExpenseTotals(ctx, userID, start, end)
+		expenseTotal, breakdown, err := s.repo.ExpenseTotals(ctx, userID, start, end)
 		if err != nil {
 			return nil, apperr.InternalErr("failed to calculate expense totals", err)
 		}
@@ -130,13 +196,21 @@ func (s *service) Compare(
 			return nil, apperr.InternalErr("failed to calculate investment totals", err)
 		}
 
+		monthStr := start.Format(config.STANDARD_YEAR_MONTH)
+		budgetStatus, overallBudget, err := s.buildBudgetStatus(ctx, userID, monthStr, expenseTotal, breakdown)
+		if err != nil {
+			return nil, err
+		}
+
 		out = append(out, MonthlyComparison{
-			Month:      start.Format(config.STANDARD_YEAR_MONTH),
-			Income:     incomeTotal,
-			Expense:    expenseTotal,
-			Investment: investTotal,
-			Savings:    incomeTotal - expenseTotal - investTotal,
-			NetWorth:   netWorth,
+			Month:         monthStr,
+			Income:        incomeTotal,
+			Expense:       expenseTotal,
+			Investment:    investTotal,
+			Savings:       incomeTotal - expenseTotal - investTotal,
+			NetWorth:      netWorth,
+			BudgetStatus:  budgetStatus,
+			OverallBudget: overallBudget,
 		})
 	}
 

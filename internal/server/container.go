@@ -7,6 +7,7 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/bankaccount"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/budget"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/category"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/debt"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/expense"
@@ -18,6 +19,7 @@ import (
 
 	// repositories (infra)
 	bankaccountrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/bankaccount"
+	budgetrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/budget"
 	categoryrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/category"
 	debtrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/debt"
 	expenserepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/expense"
@@ -43,6 +45,7 @@ type Container struct {
 	BankAccount bankaccount.Service
 	Debt        debt.Service
 	Recurring   recurring.Service
+	Budget      budget.Service
 
 	// middleware
 	AuthMw *middleware.AuthMiddleware
@@ -57,6 +60,7 @@ type Container struct {
 	BankAccountH *handler.BankAccountHandler
 	DebtH        *handler.DebtHandler
 	RecurringH   *handler.RecurringHandler
+	BudgetH      *handler.BudgetHandler
 }
 
 func BuildContainer(
@@ -77,12 +81,14 @@ func BuildContainer(
 	bankAccountRepo := bankaccountrepo.New(db, logger)
 	debtRepo := debtrepo.New(db, logger)
 	recurringRepo := recurringrepo.New(db, logger)
+	budgetRepo := budgetrepo.New(db, logger)
 
 	userSvc := user.NewService(userRepo, sessionRepo)
 	categorySvc := category.NewService(categoryRepo, expenseRepo)
 	incomeSvc := income.NewService(incomeRepo)
 	expenseSvc := expense.NewService(expenseRepo, categoryRepo)
-	summarySvc := summary.NewService(summaryRepo)
+	budgetSvc := budget.NewService(budgetRepo)
+	summarySvc := summary.NewService(summaryRepo, budgetSvc)
 	investmentSvc := investment.NewService(investmentRepo)
 	bankAccountSvc := bankaccount.NewService(bankAccountRepo)
 	debtSvc := debt.NewService(debtRepo)
@@ -99,6 +105,7 @@ func BuildContainer(
 	bankAccountH := handler.NewBankAccountHandler(bankAccountSvc, logger)
 	debtH := handler.NewDebtHandler(debtSvc, logger)
 	recurringH := handler.NewRecurringHandler(recurringSvc, logger)
+	budgetH := handler.NewBudgetHandler(budgetSvc, logger)
 
 	return &Container{
 		Users:       userSvc,
@@ -110,6 +117,7 @@ func BuildContainer(
 		BankAccount: bankAccountSvc,
 		Debt:        debtSvc,
 		Recurring:   recurringSvc,
+		Budget:      budgetSvc,
 
 		AuthMw: authMw,
 
@@ -122,5 +130,6 @@ func BuildContainer(
 		BankAccountH: bankAccountH,
 		DebtH:        debtH,
 		RecurringH:   recurringH,
+		BudgetH:      budgetH,
 	}
 }
