@@ -18,6 +18,7 @@ import (
 	expenserepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/expense"
 	incomerepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/income"
 	investmentrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/investment"
+	sessionrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/session"
 	summaryrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/summary"
 	userrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/user"
 
@@ -60,8 +61,9 @@ func BuildContainer(
 	expenseRepo := expenserepo.New(db, logger)
 	summaryRepo := summaryrepo.New(db, logger)
 	investmentRepo := investmentrepo.New(db, logger)
+	sessionRepo := sessionrepo.New(db, logger)
 
-	userSvc := user.NewService(userRepo)
+	userSvc := user.NewService(userRepo, sessionRepo)
 	categorySvc := category.NewService(categoryRepo)
 	incomeSvc := income.NewService(incomeRepo)
 	expenseSvc := expense.NewService(expenseRepo, categoryRepo)

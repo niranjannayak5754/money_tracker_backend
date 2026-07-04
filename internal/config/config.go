@@ -2,16 +2,21 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	HTTPAddr  string
-	MongoURI  string
-	DBName    string
-	JWTSecret string
+	HTTPAddr       string
+	MongoURI       string
+	DBName         string
+	JWTSecret      string
+	AllowedOrigins []string
+	AppTimezone    *time.Location
 }
 
 func Load() (Config, error) {
@@ -32,6 +37,19 @@ func Load() (Config, error) {
 	if cfg.JWTSecret == "" {
 		return Config{}, errors.New("JWT_SECRET is required")
 	}
+
+	for _, o := range strings.Split(env("ALLOWED_ORIGINS", "http://localhost:3000"), ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			cfg.AllowedOrigins = append(cfg.AllowedOrigins, o)
+		}
+	}
+
+	tzName := env("APP_TIMEZONE", "Asia/Kolkata")
+	loc, err := time.LoadLocation(tzName)
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid APP_TIMEZONE %q: %w", tzName, err)
+	}
+	cfg.AppTimezone = loc
 
 	return cfg, nil
 }

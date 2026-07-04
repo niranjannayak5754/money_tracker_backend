@@ -1,9 +1,13 @@
 package server
 
 import (
+	"time"
+
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/time/rate"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/handler"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/http/middleware"
 )
 
 // RegisterRoutesV2 registers routes using new http handlers
@@ -16,10 +20,14 @@ func RegisterRoutesV2(r chi.Router, c *Container) {
 	r.Get("/docs/json", handler.OpenAPIJSON)
 	r.Get("/openapi.yaml", handler.OpenAPI)
 
+	// throttles brute-force/credential-stuffing attempts against auth endpoints
+	authRateLimit := middleware.RateLimit(rate.Every(2*time.Second), 5)
+
 	// auth routes
 	r.Route("/auth", func(r chi.Router) {
-		r.Post("/register", c.AuthH.Register)
-		r.Post("/login", c.AuthH.Login)
+		r.With(authRateLimit).Post("/register", c.AuthH.Register)
+		r.With(authRateLimit).Post("/login", c.AuthH.Login)
+		r.With(authRateLimit).Post("/refresh", c.AuthH.Refresh)
 		r.With(c.AuthMw.RequireAuth).Get("/me", c.AuthH.Me)
 		r.With(c.AuthMw.RequireAuth).Post("/logout", c.AuthH.Logout)
 		r.With(c.AuthMw.RequireAuth).Post("/reset-password", c.AuthH.ResetPassword)

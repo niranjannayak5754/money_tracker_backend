@@ -94,7 +94,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	token, err := security.Sign(
 		h.cfg.JWTSecret,
 		string(u.ID),
-		config.SEVEN_DAYS_IN_HOUR*time.Hour,
+		time.Duration(config.ACCESS_TOKEN_TTL_MINUTES)*time.Minute,
 	)
 	if err != nil {
 		h.logger.Error(
@@ -108,8 +108,68 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	refreshToken, err := h.svc.IssueRefreshToken(r.Context(), u.ID)
+	if err != nil {
+		h.logger.Error(
+			"auth.login refresh token issuance failed",
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", u.ID,
+			"err", err,
+		)
+
+		response.WriteError(w, r, err)
+		return
+	}
+
 	response.JSON(w, http.StatusOK, map[string]string{
-		"access_token": token,
+		"access_token":  token,
+		"refresh_token": refreshToken,
+	})
+}
+
+// POST /auth/refresh
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		response.BadReq(w, `invalid json payload`)
+		return
+	}
+
+	uid, newRefreshToken, err := h.svc.RotateRefreshToken(r.Context(), in.RefreshToken)
+	if err != nil {
+		h.logger.Warn(
+			"auth.refresh failed",
+			"request_id", requestctx.RequestID(r.Context()),
+			"err", err,
+		)
+
+		response.WriteError(w, r, err)
+		return
+	}
+
+	token, err := security.Sign(
+		h.cfg.JWTSecret,
+		string(uid),
+		time.Duration(config.ACCESS_TOKEN_TTL_MINUTES)*time.Minute,
+	)
+	if err != nil {
+		h.logger.Error(
+			"auth.refresh jwt signing failed",
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", uid,
+			"err", err,
+		)
+
+		response.WriteError(w, r, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{
+		"access_token":  token,
+		"refresh_token": newRefreshToken,
 	})
 }
 
@@ -142,7 +202,25 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 // POST /auth/logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	// Stateless JWT logout — client just discards token
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
+
+	// Revoking all refresh tokens turns logout into a real security action —
+	// the current access token still expires naturally within its short TTL.
+	if err := h.svc.RevokeAllSessions(r.Context(), uid); err != nil {
+		h.logger.Error(
+			"auth.logout session revocation failed",
+			"request_id", requestctx.RequestID(r.Context()),
+			"uid", uid,
+			"err", err,
+		)
+
+		response.WriteError(w, r, err)
+		return
+	}
+
 	response.JSON(w, http.StatusOK, map[string]string{
 		"message": "logged out successfully",
 	})
@@ -156,6 +234,7 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var in struct {
+		OldPassword string `json:"old_password"`
 		NewPassword string `json:"new_password"`
 	}
 
@@ -164,7 +243,7 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.ResetPassword(r.Context(), uid, in.NewPassword); err != nil {
+	if err := h.svc.ResetPassword(r.Context(), uid, in.OldPassword, in.NewPassword); err != nil {
 		h.logger.Warn(
 			"auth.reset_password failed",
 			"request_id", requestctx.RequestID(r.Context()),

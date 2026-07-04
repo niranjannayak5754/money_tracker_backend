@@ -27,8 +27,10 @@ func New(cfg config.Config, c *Container, logger *slog.Logger) *Server {
 		middleware.RequestID,
 		chimw.RealIP,
 		chimw.Recoverer,
+		middleware.SecurityHeaders,
+		middleware.BodyLimit,
 	)
-	r.Use(middleware.CORSSimple())
+	r.Use(middleware.CORS(cfg.AllowedOrigins))
 
 	// routes
 	RegisterRoutesV2(r, c)
