@@ -8,3 +8,4 @@ type InvestmentID string
 type SessionID string
 type BankAccountID string
 type DebtID string
+type RecurringID string

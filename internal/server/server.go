@@ -11,11 +11,19 @@ import (
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/middleware"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/scheduler"
 )
 
+// recurringCheckInterval is how often the background scheduler checks for
+// due recurring templates. Hourly is frequent enough that a missed period
+// (e.g. after downtime) catches up within an hour, without polling Mongo
+// unnecessarily often for a personal-scale app.
+const recurringCheckInterval = time.Hour
+
 type Server struct {
-	httpServer *http.Server
-	logger     *slog.Logger
+	httpServer      *http.Server
+	recurringRunner *scheduler.RecurringRunner
+	logger          *slog.Logger
 }
 
 // constructor
@@ -43,7 +51,8 @@ func New(cfg config.Config, c *Container, logger *slog.Logger) *Server {
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  60 * time.Second,
 		},
-		logger: logger,
+		recurringRunner: scheduler.NewRecurringRunner(c.Recurring, c.Expenses, c.Income, c.Investment, logger),
+		logger:          logger,
 	}
 }
 
@@ -66,9 +75,8 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}()
 
-	// FUTURE: background workers
-	// go s.runCronJobs(ctx)
-	// go s.runAsyncConsumers(ctx)
+	// background workers
+	go s.recurringRunner.Run(ctx, recurringCheckInterval)
 
 	// Wait for shutdown signal
 	<-ctx.Done()
