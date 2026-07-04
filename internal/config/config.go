@@ -11,6 +11,7 @@ import (
 )
 
 type Config struct {
+	AppEnv         string
 	HTTPAddr       string
 	MongoURI       string
 	DBName         string
@@ -25,6 +26,7 @@ func Load() (Config, error) {
 	_ = godotenv.Load()
 
 	cfg := Config{
+		AppEnv:    env("APP_ENV", "development"),
 		HTTPAddr:  env("HTTP_ADDR", ":8080"),
 		MongoURI:  os.Getenv("MONGO_URI"),
 		DBName:    env("MONGO_DB", "money_tracker"),

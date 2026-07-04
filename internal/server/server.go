@@ -42,7 +42,7 @@ func New(cfg config.Config, c *Container, logger *slog.Logger) *Server {
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
 
 	// routes
-	RegisterRoutesV2(r, c)
+	RegisterRoutesV2(r, c, cfg)
 
 	return &Server{
 		httpServer: &http.Server{

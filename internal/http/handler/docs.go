@@ -10,13 +10,9 @@ import (
 
 // GET /openapi.yaml
 func OpenAPI(w http.ResponseWriter, r *http.Request) {
-	// disable caching in dev
-	if os.Getenv("APP_ENV") == "production" {
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-	} else {
-		w.Header().Set("Cache-Control", "no-cache")
-	}
-
+	// This route isn't registered at all when APP_ENV=production (see
+	// router.go) — only dev reaches here, so always serve fresh.
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeFile(w, r, "openapi.yaml")
 }
 
@@ -73,11 +69,6 @@ func OpenAPIJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-
-	// caching rule
-	if os.Getenv("APP_ENV") != "development" {
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-	}
-
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(jsonBytes)
 }

@@ -6,19 +6,23 @@ import (
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/time/rate"
 
+	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/handler"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/middleware"
 )
 
 // RegisterRoutesV2 registers routes using new http handlers
-func RegisterRoutesV2(r chi.Router, c *Container) {
+func RegisterRoutesV2(r chi.Router, c *Container, cfg config.Config) {
 	// health check routes
 	r.Get("/health", handler.Health)
 
-	// swagger docs routes
-	r.Get("/docs", handler.SwaggerUI)
-	r.Get("/docs/json", handler.OpenAPIJSON)
-	r.Get("/openapi.yaml", handler.OpenAPI)
+	// swagger docs routes — not registered in production so the API schema
+	// and interactive explorer aren't publicly reachable outside dev/staging
+	if cfg.AppEnv != "production" {
+		r.Get("/docs", handler.SwaggerUI)
+		r.Get("/docs/json", handler.OpenAPIJSON)
+		r.Get("/openapi.yaml", handler.OpenAPI)
+	}
 
 	// throttles brute-force/credential-stuffing attempts against auth endpoints
 	authRateLimit := middleware.RateLimit(rate.Every(2*time.Second), 5)
