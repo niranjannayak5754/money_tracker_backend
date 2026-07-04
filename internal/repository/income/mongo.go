@@ -258,7 +258,7 @@ func (m *MongoRepo) Delete(
 			Action:   "delete",
 			Entity:   "income",
 			EntityID: string(id),
-			Payload: bson.M{"deleted_at": time.Now().UTC()},
+			Payload:  bson.M{"deleted_at": time.Now().UTC()},
 		})
 	}
 

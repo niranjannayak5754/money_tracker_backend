@@ -16,6 +16,7 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	mongohelper "github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 	auditrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/audit"
 )
 
@@ -192,6 +193,44 @@ func (m *MongoRepo) ListByMonth(ctx context.Context, userId common.UserID, start
 	return out, nil
 }
 
+// GetByID returns a single non-deleted investment belonging to the user.
+func (m *MongoRepo) GetByID(ctx context.Context, userId common.UserID, id common.InvestmentID) (*investment.Model, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userId))
+	if err != nil {
+		return nil, err
+	}
+	invId, err := mongohelper.ObjectIDFromHex(string(id))
+	if err != nil {
+		return nil, err
+	}
+
+	var mi mongoInvestment
+	err = m.col.FindOne(ctx, bson.M{"_id": invId, "user_id": uid, "deleted_at": bson.M{"$exists": false}}).Decode(&mi)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, repository.ErrNotFound
+		}
+		m.logger.Error("mongo find by id failed", "request_id", requestctx.RequestID(ctx), "uid", userId, "investment_id", id, "err", err)
+		return nil, err
+	}
+
+	return &investment.Model{
+		ID:              common.InvestmentID(mi.ID.Hex()),
+		UserID:          common.UserID(mi.UserID.Hex()),
+		Type:            mi.Type,
+		DisplayType:     mi.DisplayType,
+		Instrument:      mi.Instrument,
+		Amount:          shared.Decimal128ToFloat(mi.Amount),
+		RetrievedAmount: shared.Decimal128ToFloat(mi.Retrieved),
+		RealizedPnl:     shared.Decimal128ToFloat(mi.RealizedPnl),
+		Status:          investment.Status(mi.Status),
+		Date:            mi.Date,
+		Notes:           mi.Notes,
+		CreatedAt:       mi.CreatedAt,
+		UpdatedAt:       mi.UpdatedAt,
+	}, nil
+}
+
 func (m *MongoRepo) Update(ctx context.Context, userId common.UserID, id common.InvestmentID, set map[string]any) (bool, error) {
 	uid, err := mongohelper.ObjectIDFromHex(string(userId))
 	if err != nil {
@@ -202,18 +241,20 @@ func (m *MongoRepo) Update(ctx context.Context, userId common.UserID, id common.
 		return false, err
 	}
 
+	decimalFields := map[string]bool{"amount": true, "retrieved_amount": true, "realized_pnl": true}
+
 	converted := bson.M{}
 	for k, v := range set {
-		if k == "amount" {
+		if decimalFields[k] {
 			f, ok := v.(float64)
 			if !ok {
-				return false, fmt.Errorf("amount must be a float64")
+				return false, fmt.Errorf("%s must be a float64", k)
 			}
 			dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", f))
 			if err != nil {
 				return false, err
 			}
-			converted["amount"] = dec
+			converted[k] = dec
 			continue
 		}
 		converted[k] = v

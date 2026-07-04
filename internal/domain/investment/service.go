@@ -2,17 +2,21 @@ package investment
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 )
 
 type Service interface {
 	Create(ctx context.Context, userID common.UserID, in CreateInput) (Model, error)
 	List(ctx context.Context, userID common.UserID, month string) ([]Model, error)
 	Update(ctx context.Context, userID common.UserID, id common.InvestmentID, in UpdateInput) error
+	Close(ctx context.Context, userID common.UserID, id common.InvestmentID, in CloseInput) (Model, error)
 	Delete(ctx context.Context, userID common.UserID, id common.InvestmentID) error
 	ListTypes(ctx context.Context) ([]TypeDoc, error)
 }
@@ -39,6 +43,17 @@ type UpdateInput struct {
 	Amount     *float64
 	Date       *time.Time
 	Notes      *string
+}
+
+// CloseInput records a full or partial withdrawal from an investment.
+// CostBasisConsumed is however much of the original invested amount this
+// withdrawal represents — the caller supplies it explicitly since the
+// backend has no live market pricing to infer it from.
+type CloseInput struct {
+	WithdrawnAmount   float64
+	CostBasisConsumed float64
+	Date              time.Time
+	Notes             string
 }
 
 func (s *service) Create(ctx context.Context, userID common.UserID, in CreateInput) (Model, error) {
@@ -130,6 +145,85 @@ func (s *service) Update(ctx context.Context, userID common.UserID, id common.In
 		return apperr.NotFoundErr("investment not found")
 	}
 	return nil
+}
+
+// closeEpsilon absorbs float/decimal rounding noise (amounts are persisted
+// rounded to 2 decimal places) so a fully-consumed remaining basis of e.g.
+// 0.004 due to rounding is still treated as fully closed.
+const closeEpsilon = 0.005
+
+// Close records a full or partial withdrawal from an investment: the
+// withdrawn amount and however much of the original cost basis it consumes.
+// Realized PnL is the difference between what was withdrawn and the cost
+// basis consumed; the investment's remaining Amount is reduced accordingly,
+// and its Status transitions to PARTIALLY_RETRIEVED or CLOSED.
+func (s *service) Close(ctx context.Context, userID common.UserID, id common.InvestmentID, in CloseInput) (Model, error) {
+	if in.WithdrawnAmount <= 0 {
+		return Model{}, apperr.ValidationErr("withdrawn amount must be greater than zero")
+	}
+	if in.CostBasisConsumed <= 0 {
+		return Model{}, apperr.ValidationErr("cost basis consumed must be greater than zero")
+	}
+
+	current, err := s.repo.GetByID(ctx, userID, id)
+	if err != nil {
+		if repository.DataNotFoundErr(err) {
+			return Model{}, apperr.NotFoundErr("investment not found")
+		}
+		return Model{}, apperr.InternalErr("failed to load investment", err)
+	}
+
+	if current.Status == StatusClosed {
+		return Model{}, apperr.ValidationErr("investment is already closed")
+	}
+
+	if in.CostBasisConsumed > current.Amount+closeEpsilon {
+		return Model{}, apperr.ValidationErr("cost basis consumed cannot exceed the investment's remaining amount")
+	}
+
+	newAmount := current.Amount - in.CostBasisConsumed
+	newRetrieved := current.RetrievedAmount + in.WithdrawnAmount
+	newRealizedPnl := current.RealizedPnl + (in.WithdrawnAmount - in.CostBasisConsumed)
+
+	newStatus := StatusPartiallyRetrieved
+	if newAmount <= closeEpsilon {
+		newAmount = 0
+		newStatus = StatusClosed
+	}
+
+	set := map[string]any{
+		"amount":           newAmount,
+		"retrieved_amount": newRetrieved,
+		"realized_pnl":     newRealizedPnl,
+		"status":           string(newStatus),
+		"updated_at":       time.Now().UTC(),
+	}
+	if in.Notes != "" {
+		closeDate := shared.ChooseDate(in.Date)
+		note := fmt.Sprintf("[closed %s] %s", closeDate.Format(config.STANDARD_DATE), in.Notes)
+		if current.Notes != "" {
+			note = current.Notes + "\n" + note
+		}
+		set["notes"] = note
+	}
+
+	updated, err := s.repo.Update(ctx, userID, id, set)
+	if err != nil {
+		return Model{}, apperr.InternalErr("failed to close investment", err)
+	}
+	if !updated {
+		return Model{}, apperr.NotFoundErr("investment not found")
+	}
+
+	current.Amount = newAmount
+	current.RetrievedAmount = newRetrieved
+	current.RealizedPnl = newRealizedPnl
+	current.Status = newStatus
+	if v, ok := set["notes"].(string); ok {
+		current.Notes = v
+	}
+
+	return *current, nil
 }
 
 func (s *service) ListTypes(ctx context.Context) ([]TypeDoc, error) {

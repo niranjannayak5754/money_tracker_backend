@@ -31,6 +31,7 @@ func (h *InvestmentHandler) Routes() http.Handler {
 	r.Get("/", h.list)
 	r.Post("/", h.create)
 	r.Put("/{id}", h.update)
+	r.Post("/{id}/close", h.close)
 	r.Delete("/{id}", h.delete)
 	return r
 }
@@ -140,6 +141,41 @@ func (h *InvestmentHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.OK(w)
+}
+
+func (h *InvestmentHandler) close(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
+
+	invID := common.InvestmentID(chi.URLParam(r, "id"))
+
+	var in struct {
+		WithdrawnAmount   float64             `json:"withdrawn_amount"`
+		CostBasisConsumed float64             `json:"cost_basis_consumed"`
+		Date              shared.FlexibleTime `json:"date"`
+		Notes             string              `json:"notes"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		response.BadReq(w, "invalid json payload")
+		return
+	}
+
+	rec, err := h.svc.Close(r.Context(), uid, invID, investment.CloseInput{
+		WithdrawnAmount:   in.WithdrawnAmount,
+		CostBasisConsumed: in.CostBasisConsumed,
+		Date:              in.Date.Time,
+		Notes:             in.Notes,
+	})
+	if err != nil {
+		h.logger.Error("investment.close failed", "request_id", requestctx.RequestID(r.Context()), "uid", uid, "investment_id", invID, "err", err)
+		response.WriteError(w, r, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, rec)
 }
 
 func (h *InvestmentHandler) delete(w http.ResponseWriter, r *http.Request) {

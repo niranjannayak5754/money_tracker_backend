@@ -329,3 +329,93 @@ func (m *mongoRepo) Delete(
 
 	return res.MatchedCount > 0, nil
 }
+
+// CountByCategory counts a user's non-deleted expenses referencing a
+// category — used to guard category archiving.
+func (m *mongoRepo) CountByCategory(
+	ctx context.Context,
+	userID common.UserID,
+	categoryID common.CategoryID,
+) (int64, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return 0, err
+	}
+	cid, err := mongohelper.ObjectIDFromHex(string(categoryID))
+	if err != nil {
+		return 0, err
+	}
+
+	count, err := m.col.CountDocuments(ctx, bson.M{
+		"user_id":     uid,
+		"category_id": cid,
+		"deleted_at":  bson.M{"$exists": false},
+	})
+	if err != nil {
+		m.logger.Error(
+			"mongo count by category failed",
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID,
+			"category_id", categoryID,
+			"err", err,
+		)
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// ReassignCategory bulk-moves a user's non-deleted expenses from one
+// category to another — used when archiving a category with reassignment.
+func (m *mongoRepo) ReassignCategory(
+	ctx context.Context,
+	userID common.UserID,
+	fromCategoryID, toCategoryID common.CategoryID,
+) (int64, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return 0, err
+	}
+	fromID, err := mongohelper.ObjectIDFromHex(string(fromCategoryID))
+	if err != nil {
+		return 0, err
+	}
+	toID, err := mongohelper.ObjectIDFromHex(string(toCategoryID))
+	if err != nil {
+		return 0, err
+	}
+
+	res, err := m.col.UpdateMany(
+		ctx,
+		bson.M{
+			"user_id":     uid,
+			"category_id": fromID,
+			"deleted_at":  bson.M{"$exists": false},
+		},
+		bson.M{"$set": bson.M{"category_id": toID, "updated_at": time.Now().UTC()}},
+	)
+	if err != nil {
+		m.logger.Error(
+			"mongo reassign category failed",
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID,
+			"err", err,
+		)
+		return 0, err
+	}
+
+	if res.ModifiedCount > 0 {
+		_ = m.audit.Write(ctx, auditrepo.Entry{
+			Action: "reassign_category",
+			Entity: "expense",
+			Payload: bson.M{
+				"user_id":          uid.Hex(),
+				"from_category_id": string(fromCategoryID),
+				"to_category_id":   string(toCategoryID),
+				"count":            res.ModifiedCount,
+			},
+		})
+	}
+
+	return res.ModifiedCount, nil
+}

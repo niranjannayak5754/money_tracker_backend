@@ -92,12 +92,12 @@ func (s *service) Compare(
 		}
 
 		out = append(out, MonthlyComparison{
-			Month:  	start.Format(config.STANDARD_YEAR_MONTH),
-			Income:  	incomeTotal,
-			Expense: 	expenseTotal,
+			Month:      start.Format(config.STANDARD_YEAR_MONTH),
+			Income:     incomeTotal,
+			Expense:    expenseTotal,
 			Investment: investTotal,
-			Savings: 	incomeTotal - expenseTotal - investTotal,
-			NetWorth: 	incomeTotal - expenseTotal + realizedPnl,
+			Savings:    incomeTotal - expenseTotal - investTotal,
+			NetWorth:   incomeTotal - expenseTotal + realizedPnl,
 		})
 	}
 

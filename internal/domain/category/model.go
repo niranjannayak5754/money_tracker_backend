@@ -11,6 +11,8 @@ type Model struct {
 	UserID    common.UserID     `json:"user_id"`
 	Name      string            `json:"name"`
 	Type      string            `json:"type"` // expense | income
+	Color     string            `json:"color,omitempty"`
+	Icon      string            `json:"icon,omitempty"`
 	Archived  bool              `json:"archived"`
 	CreatedAt time.Time         `json:"created_at"`
 }

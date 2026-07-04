@@ -93,8 +93,10 @@ func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var in struct {
-		Name string `json:"name"`
-		Type string `json:"type"`
+		Name  string `json:"name"`
+		Type  string `json:"type"`
+		Color string `json:"color"`
+		Icon  string `json:"icon"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -103,8 +105,10 @@ func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := h.svc.Create(r.Context(), uid, category.CreateInput{
-		Name: in.Name,
-		Type: in.Type,
+		Name:  in.Name,
+		Type:  in.Type,
+		Color: in.Color,
+		Icon:  in.Icon,
 	})
 	if err != nil {
 		h.logger.Error(
@@ -134,8 +138,11 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var in struct {
-		Name     *string `json:"name"`
-		Archived *bool   `json:"archived"`
+		Name       *string `json:"name"`
+		Color      *string `json:"color"`
+		Icon       *string `json:"icon"`
+		Archived   *bool   `json:"archived"`
+		ReassignTo *string `json:"reassign_to"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -143,13 +150,22 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var reassignTo *common.CategoryID
+	if in.ReassignTo != nil && *in.ReassignTo != "" {
+		rt := common.CategoryID(*in.ReassignTo)
+		reassignTo = &rt
+	}
+
 	err := h.svc.Update(
 		r.Context(),
 		uid,
 		catID,
 		category.UpdateInput{
-			Name:     in.Name,
-			Archived: in.Archived,
+			Name:       in.Name,
+			Color:      in.Color,
+			Icon:       in.Icon,
+			Archived:   in.Archived,
+			ReassignTo: reassignTo,
 		},
 	)
 	if err != nil {
