@@ -11,3 +11,4 @@ type DebtID string
 type RecurringID string
 type BudgetID string
 type GoalID string
+type NotificationID string

@@ -43,6 +43,9 @@ func (f *fakeInvestmentService) GetXIRR(ctx context.Context, userID common.UserI
 func (f *fakeInvestmentService) GetPortfolioXIRR(ctx context.Context, userID common.UserID) (float64, error) {
 	return 0, nil
 }
+func (f *fakeInvestmentService) ListMaturingBefore(ctx context.Context, before time.Time) ([]investment.Model, error) {
+	return nil, nil
+}
 
 // Regression: PUT /investment/{id} decoded Date as a plain *time.Time,
 // which requires RFC3339 and rejects date-only strings that Create accepts

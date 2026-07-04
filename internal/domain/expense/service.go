@@ -2,10 +2,14 @@ package expense
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/budget"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/notification"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 )
 
@@ -17,17 +21,23 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
-	cats CategoryRepository
+	repo          Repository
+	cats          CategoryRepository
+	budgets       budget.Service
+	notifications notification.Service
 }
 
 func NewService(
 	repo Repository,
 	cats CategoryRepository,
+	budgets budget.Service,
+	notifications notification.Service,
 ) Service {
 	return &service{
-		repo: repo,
-		cats: cats,
+		repo:          repo,
+		cats:          cats,
+		budgets:       budgets,
+		notifications: notifications,
 	}
 }
 
@@ -88,7 +98,55 @@ func (s *service) Create(
 	}
 	exp.ID = id
 
+	// Best-effort: a failure here must never fail the expense itself —
+	// the money was still recorded correctly either way.
+	s.notifyIfBudgetExceeded(ctx, userID, exp)
+
 	return exp, nil
+}
+
+// notifyIfBudgetExceeded checks whether this expense just pushed its
+// category over its budget for the month, and if so raises a
+// budget_exceeded notification. Deduped per (category, month) so adding
+// several more expenses in the same overspent category/month doesn't spam
+// a new notification each time — but a fresh month (or a re-set budget)
+// naturally gets its own notification the next time it's exceeded.
+func (s *service) notifyIfBudgetExceeded(ctx context.Context, userID common.UserID, exp Model) {
+	if s.budgets == nil || s.notifications == nil {
+		return
+	}
+
+	month := exp.Date.Format(config.STANDARD_YEAR_MONTH)
+
+	resolved, err := s.budgets.ResolveForMonth(ctx, userID, month)
+	if err != nil {
+		return
+	}
+	budgeted, ok := resolved.ByCategory[exp.CategoryID]
+	if !ok {
+		return
+	}
+
+	start, end, err := shared.MonthBounds(month)
+	if err != nil {
+		return
+	}
+	spent, err := s.repo.SumByCategoryForMonth(ctx, userID, exp.CategoryID, start, end)
+	if err != nil {
+		return
+	}
+
+	if spent <= budgeted {
+		return
+	}
+
+	_, _ = s.notifications.CreateIfNotExists(ctx, userID, notification.CreateInput{
+		Type:              notification.TypeBudgetExceeded,
+		Title:             "Budget exceeded",
+		Message:           fmt.Sprintf("You've spent %.2f of your %.2f budget for this category in %s", spent, budgeted, month),
+		RelatedEntityType: "category",
+		RelatedEntityID:   fmt.Sprintf("%s:%s", exp.CategoryID, month),
+	})
 }
 
 func (s *service) List(

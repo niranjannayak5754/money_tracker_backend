@@ -115,6 +115,18 @@ func (f *fakeInvestmentRepo) GetTypes(ctx context.Context) ([]TypeDoc, error) {
 	return f.types, nil
 }
 
+func (f *fakeInvestmentRepo) ListMaturingBefore(ctx context.Context, before time.Time) ([]Model, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []Model
+	for _, m := range f.items {
+		if m.MaturityDate != nil && m.MaturityDate.Before(before) && m.Status != StatusClosed {
+			out = append(out, *m)
+		}
+	}
+	return out, nil
+}
+
 // --- tests ---
 
 const testUID = common.UserID("user-1")

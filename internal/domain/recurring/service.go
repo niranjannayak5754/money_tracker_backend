@@ -24,6 +24,11 @@ type Service interface {
 	// advances it to its next occurrence, deactivating it if that next
 	// occurrence would fall after EndDate.
 	MarkRun(ctx context.Context, userID common.UserID, id common.RecurringID, ranAt time.Time) error
+
+	// ListUpcoming is a global (cross-user) query for the background
+	// notification scanner's "bill due soon" reminders — not exposed via
+	// any user-facing HTTP route.
+	ListUpcoming(ctx context.Context, from, to time.Time) ([]Model, error)
 }
 
 type service struct {
@@ -243,4 +248,12 @@ func toFloat64(v any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func (s *service) ListUpcoming(ctx context.Context, from, to time.Time) ([]Model, error) {
+	items, err := s.repo.ListUpcoming(ctx, from, to)
+	if err != nil {
+		return nil, apperr.InternalErr("failed to list upcoming recurring templates", err)
+	}
+	return items, nil
 }

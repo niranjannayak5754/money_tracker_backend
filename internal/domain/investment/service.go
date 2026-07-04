@@ -26,6 +26,10 @@ type Service interface {
 	// GetPortfolioXIRR computes a blended annualized return across all of
 	// a user's investments.
 	GetPortfolioXIRR(ctx context.Context, userID common.UserID) (float64, error)
+
+	// ListMaturingBefore is a global (cross-user) query for the background
+	// notification scanner — not exposed via any user-facing HTTP route.
+	ListMaturingBefore(ctx context.Context, before time.Time) ([]Model, error)
 }
 
 type service struct {
@@ -37,19 +41,21 @@ func NewService(repo Repository) Service {
 }
 
 type CreateInput struct {
-	Type       string
-	Instrument string
-	Amount     float64
-	Date       time.Time
-	Notes      string
+	Type         string
+	Instrument   string
+	Amount       float64
+	Date         time.Time
+	MaturityDate *time.Time
+	Notes        string
 }
 
 type UpdateInput struct {
-	Type       *string
-	Instrument *string
-	Amount     *float64
-	Date       *time.Time
-	Notes      *string
+	Type         *string
+	Instrument   *string
+	Amount       *float64
+	Date         *time.Time
+	MaturityDate *time.Time
+	Notes        *string
 }
 
 // CloseInput records a full or partial withdrawal from an investment.
@@ -86,6 +92,7 @@ func (s *service) Create(ctx context.Context, userID common.UserID, in CreateInp
 		RealizedPnl:     0,
 		Status:          StatusActive,
 		Date:            shared.ChooseDate(in.Date),
+		MaturityDate:    in.MaturityDate,
 		Notes:           in.Notes,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -139,6 +146,9 @@ func (s *service) Update(ctx context.Context, userID common.UserID, id common.In
 	}
 	if in.Date != nil {
 		set["date"] = shared.ChooseDate(*in.Date)
+	}
+	if in.MaturityDate != nil {
+		set["maturity_date"] = *in.MaturityDate
 	}
 	if in.Notes != nil {
 		set["notes"] = *in.Notes
@@ -334,4 +344,12 @@ func (s *service) GetPortfolioXIRR(ctx context.Context, userID common.UserID) (f
 		return 0, apperr.ValidationErr("unable to compute portfolio XIRR: " + err.Error())
 	}
 	return rate, nil
+}
+
+func (s *service) ListMaturingBefore(ctx context.Context, before time.Time) ([]Model, error) {
+	items, err := s.repo.ListMaturingBefore(ctx, before)
+	if err != nil {
+		return nil, apperr.InternalErr("failed to list maturing investments", err)
+	}
+	return items, nil
 }

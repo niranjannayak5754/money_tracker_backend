@@ -41,26 +41,6 @@ func NewRecurringRunner(
 	}
 }
 
-// Run ticks every interval until ctx is done, materializing due templates.
-// Tolerant of restarts: each tick only asks "what's due right now", so a
-// missed period is picked up (one occurrence per tick) on the first tick
-// after the process comes back up, rather than requiring precise timing.
-func (r *RecurringRunner) Run(ctx context.Context, interval time.Duration) {
-	r.RunOnce(ctx)
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			r.RunOnce(ctx)
-		}
-	}
-}
-
 // RunOnce performs a single pass: materialize every currently-due template.
 // Exported so it can be driven directly (by tests, or an on-demand trigger)
 // without waiting on the ticker.

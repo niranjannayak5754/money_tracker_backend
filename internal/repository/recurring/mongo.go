@@ -229,3 +229,35 @@ func (m *MongoRepo) ListDue(ctx context.Context, asOf time.Time) ([]recurring.Mo
 	}
 	return out, nil
 }
+
+// ListUpcoming returns active, non-deleted templates whose NextRunDate
+// falls strictly between from and to.
+func (m *MongoRepo) ListUpcoming(ctx context.Context, from, to time.Time) ([]recurring.Model, error) {
+	filter := bson.M{
+		"active":        true,
+		"deleted_at":    bson.M{"$exists": false},
+		"next_run_date": bson.M{"$gt": from, "$lte": to},
+	}
+
+	cur, err := m.col.Find(ctx, filter)
+	if err != nil {
+		m.logger.Error("mongo find upcoming failed", "request_id", requestctx.RequestID(ctx), "err", err)
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	var out []recurring.Model
+	for cur.Next(ctx) {
+		var mr mongoRecurring
+		if err := cur.Decode(&mr); err != nil {
+			m.logger.Error("mongo decode upcoming failed", "request_id", requestctx.RequestID(ctx), "err", err)
+			return nil, err
+		}
+		out = append(out, toModel(mr))
+	}
+
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

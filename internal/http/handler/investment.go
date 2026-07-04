@@ -45,11 +45,12 @@ func (h *InvestmentHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var in struct {
-		Type       string              `json:"type"`
-		Instrument string              `json:"instrument"`
-		Amount     float64             `json:"amount"`
-		Date       shared.FlexibleTime `json:"date"`
-		Notes      string              `json:"notes"`
+		Type         string               `json:"type"`
+		Instrument   string               `json:"instrument"`
+		Amount       float64              `json:"amount"`
+		Date         shared.FlexibleTime  `json:"date"`
+		MaturityDate *shared.FlexibleTime `json:"maturity_date"`
+		Notes        string               `json:"notes"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -63,11 +64,12 @@ func (h *InvestmentHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rec, err := h.svc.Create(r.Context(), uid, investment.CreateInput{
-		Type:       in.Type,
-		Instrument: in.Instrument,
-		Amount:     in.Amount,
-		Date:       shared.ChooseDate(in.Date.Time),
-		Notes:      in.Notes,
+		Type:         in.Type,
+		Instrument:   in.Instrument,
+		Amount:       in.Amount,
+		Date:         shared.ChooseDate(in.Date.Time),
+		MaturityDate: flexibleTimePtr(in.MaturityDate),
+		Notes:        in.Notes,
 	})
 	if err != nil {
 		h.logger.Error("investment.create failed", "request_id", requestctx.RequestID(r.Context()), "uid", uid, "err", err)
@@ -117,11 +119,12 @@ func (h *InvestmentHandler) update(w http.ResponseWriter, r *http.Request) {
 	invID := common.InvestmentID(chi.URLParam(r, "id"))
 
 	var in struct {
-		Type       *string              `json:"type"`
-		Instrument *string              `json:"instrument"`
-		Amount     *float64             `json:"amount"`
-		Date       *shared.FlexibleTime `json:"date"`
-		Notes      *string              `json:"notes"`
+		Type         *string              `json:"type"`
+		Instrument   *string              `json:"instrument"`
+		Amount       *float64             `json:"amount"`
+		Date         *shared.FlexibleTime `json:"date"`
+		MaturityDate *shared.FlexibleTime `json:"maturity_date"`
+		Notes        *string              `json:"notes"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -136,11 +139,12 @@ func (h *InvestmentHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.svc.Update(r.Context(), uid, invID, investment.UpdateInput{
-		Type:       in.Type,
-		Instrument: in.Instrument,
-		Amount:     in.Amount,
-		Date:       date,
-		Notes:      in.Notes,
+		Type:         in.Type,
+		Instrument:   in.Instrument,
+		Amount:       in.Amount,
+		Date:         date,
+		MaturityDate: flexibleTimePtr(in.MaturityDate),
+		Notes:        in.Notes,
 	})
 	if err != nil {
 		h.logger.Error("investment.update failed", "request_id", requestctx.RequestID(r.Context()), "uid", uid, "investment_id", invID, "err", err)

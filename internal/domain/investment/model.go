@@ -17,6 +17,7 @@ type Model struct {
 	RetrievedAmount float64             `json:"retrieved_amount"`
 	RealizedPnl     float64             `json:"realized_pnl"`
 	Date            time.Time           `json:"date"`
+	MaturityDate    *time.Time          `json:"maturity_date,omitempty"`
 	Notes           string              `json:"notes,omitempty"`
 	CreatedAt       time.Time           `json:"created_at"`
 	UpdatedAt       time.Time           `json:"updated_at"`

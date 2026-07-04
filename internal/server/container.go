@@ -14,6 +14,7 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/goal"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/notification"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/recurring"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/summary"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/user"
@@ -27,6 +28,7 @@ import (
 	goalrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/goal"
 	incomerepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/income"
 	investmentrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/investment"
+	notificationrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/notification"
 	recurringrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/recurring"
 	sessionrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/session"
 	summaryrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/summary"
@@ -38,33 +40,35 @@ import (
 
 type Container struct {
 	// domain services
-	Users       user.Service
-	Categories  category.Service
-	Income      income.Service
-	Expenses    expense.Service
-	Summary     summary.Service
-	Investment  investment.Service
-	BankAccount bankaccount.Service
-	Debt        debt.Service
-	Recurring   recurring.Service
-	Budget      budget.Service
-	Goal        goal.Service
+	Users        user.Service
+	Categories   category.Service
+	Income       income.Service
+	Expenses     expense.Service
+	Summary      summary.Service
+	Investment   investment.Service
+	BankAccount  bankaccount.Service
+	Debt         debt.Service
+	Recurring    recurring.Service
+	Budget       budget.Service
+	Goal         goal.Service
+	Notification notification.Service
 
 	// middleware
 	AuthMw *middleware.AuthMiddleware
 
 	// handlers
-	AuthH        *handler.AuthHandler
-	CategoryH    *handler.CategoryHandler
-	IncomeH      *handler.IncomeHandler
-	ExpenseH     *handler.ExpenseHandler
-	SummaryH     *handler.SummaryHandler
-	InvestmentH  *handler.InvestmentHandler
-	BankAccountH *handler.BankAccountHandler
-	DebtH        *handler.DebtHandler
-	RecurringH   *handler.RecurringHandler
-	BudgetH      *handler.BudgetHandler
-	GoalH        *handler.GoalHandler
+	AuthH         *handler.AuthHandler
+	CategoryH     *handler.CategoryHandler
+	IncomeH       *handler.IncomeHandler
+	ExpenseH      *handler.ExpenseHandler
+	SummaryH      *handler.SummaryHandler
+	InvestmentH   *handler.InvestmentHandler
+	BankAccountH  *handler.BankAccountHandler
+	DebtH         *handler.DebtHandler
+	RecurringH    *handler.RecurringHandler
+	BudgetH       *handler.BudgetHandler
+	GoalH         *handler.GoalHandler
+	NotificationH *handler.NotificationHandler
 }
 
 func BuildContainer(
@@ -87,12 +91,14 @@ func BuildContainer(
 	recurringRepo := recurringrepo.New(db, logger)
 	budgetRepo := budgetrepo.New(db, logger)
 	goalRepo := goalrepo.New(db, logger)
+	notificationRepo := notificationrepo.New(db, logger)
 
 	userSvc := user.NewService(userRepo, sessionRepo)
 	categorySvc := category.NewService(categoryRepo, expenseRepo)
 	incomeSvc := income.NewService(incomeRepo)
-	expenseSvc := expense.NewService(expenseRepo, categoryRepo)
 	budgetSvc := budget.NewService(budgetRepo)
+	notificationSvc := notification.NewService(notificationRepo)
+	expenseSvc := expense.NewService(expenseRepo, categoryRepo, budgetSvc, notificationSvc)
 	summarySvc := summary.NewService(summaryRepo, budgetSvc)
 	investmentSvc := investment.NewService(investmentRepo)
 	bankAccountSvc := bankaccount.NewService(bankAccountRepo)
@@ -113,32 +119,35 @@ func BuildContainer(
 	recurringH := handler.NewRecurringHandler(recurringSvc, logger)
 	budgetH := handler.NewBudgetHandler(budgetSvc, logger)
 	goalH := handler.NewGoalHandler(goalSvc, logger)
+	notificationH := handler.NewNotificationHandler(notificationSvc, logger)
 
 	return &Container{
-		Users:       userSvc,
-		Categories:  categorySvc,
-		Income:      incomeSvc,
-		Expenses:    expenseSvc,
-		Summary:     summarySvc,
-		Investment:  investmentSvc,
-		BankAccount: bankAccountSvc,
-		Debt:        debtSvc,
-		Recurring:   recurringSvc,
-		Budget:      budgetSvc,
-		Goal:        goalSvc,
+		Users:        userSvc,
+		Categories:   categorySvc,
+		Income:       incomeSvc,
+		Expenses:     expenseSvc,
+		Summary:      summarySvc,
+		Investment:   investmentSvc,
+		BankAccount:  bankAccountSvc,
+		Debt:         debtSvc,
+		Recurring:    recurringSvc,
+		Budget:       budgetSvc,
+		Goal:         goalSvc,
+		Notification: notificationSvc,
 
 		AuthMw: authMw,
 
-		AuthH:        authH,
-		CategoryH:    categoryH,
-		IncomeH:      incomeH,
-		ExpenseH:     expenseH,
-		SummaryH:     summaryH,
-		InvestmentH:  investmentH,
-		BankAccountH: bankAccountH,
-		DebtH:        debtH,
-		RecurringH:   recurringH,
-		BudgetH:      budgetH,
-		GoalH:        goalH,
+		AuthH:         authH,
+		CategoryH:     categoryH,
+		IncomeH:       incomeH,
+		ExpenseH:      expenseH,
+		SummaryH:      summaryH,
+		InvestmentH:   investmentH,
+		BankAccountH:  bankAccountH,
+		DebtH:         debtH,
+		RecurringH:    recurringH,
+		BudgetH:       budgetH,
+		GoalH:         goalH,
+		NotificationH: notificationH,
 	}
 }

@@ -40,6 +40,15 @@ type Repository interface {
 		userID common.UserID,
 		fromCategoryID, toCategoryID common.CategoryID,
 	) (int64, error)
+
+	// SumByCategoryForMonth totals non-deleted expenses for one category
+	// within [start, end) — used by the real-time budget-exceeded check.
+	SumByCategoryForMonth(
+		ctx context.Context,
+		userID common.UserID,
+		categoryID common.CategoryID,
+		start, end time.Time,
+	) (float64, error)
 }
 
 // Cross-domain dependency (category)

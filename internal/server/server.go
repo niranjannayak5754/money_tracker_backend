@@ -21,9 +21,10 @@ import (
 const recurringCheckInterval = time.Hour
 
 type Server struct {
-	httpServer      *http.Server
-	recurringRunner *scheduler.RecurringRunner
-	logger          *slog.Logger
+	httpServer          *http.Server
+	recurringRunner     *scheduler.RecurringRunner
+	notificationScanner *scheduler.NotificationScanner
+	logger              *slog.Logger
 }
 
 // constructor
@@ -51,8 +52,33 @@ func New(cfg config.Config, c *Container, logger *slog.Logger) *Server {
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  60 * time.Second,
 		},
-		recurringRunner: scheduler.NewRecurringRunner(c.Recurring, c.Expenses, c.Income, c.Investment, logger),
-		logger:          logger,
+		recurringRunner:     scheduler.NewRecurringRunner(c.Recurring, c.Expenses, c.Income, c.Investment, logger),
+		notificationScanner: scheduler.NewNotificationScanner(c.Notification, c.Investment, c.Recurring, logger),
+		logger:              logger,
+	}
+}
+
+// runBackgroundJobs ticks once immediately, then on recurringCheckInterval,
+// running the recurring-template materializer and the notification scanner
+// on the same tick until ctx is done.
+func (s *Server) runBackgroundJobs(ctx context.Context) {
+	tick := func() {
+		s.recurringRunner.RunOnce(ctx)
+		s.notificationScanner.RunOnce(ctx)
+	}
+
+	tick()
+
+	ticker := time.NewTicker(recurringCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			tick()
+		}
 	}
 }
 
@@ -76,7 +102,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 
 	// background workers
-	go s.recurringRunner.Run(ctx, recurringCheckInterval)
+	go s.runBackgroundJobs(ctx)
 
 	// Wait for shutdown signal
 	<-ctx.Done()

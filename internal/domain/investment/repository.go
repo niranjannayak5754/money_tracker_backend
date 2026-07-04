@@ -14,4 +14,9 @@ type Repository interface {
 	Update(ctx context.Context, userID common.UserID, id common.InvestmentID, set map[string]any) (bool, error)
 	Delete(ctx context.Context, userID common.UserID, id common.InvestmentID) (bool, error)
 	GetTypes(ctx context.Context) ([]TypeDoc, error)
+
+	// ListMaturingBefore returns non-closed, non-deleted investments
+	// (across all users) with a MaturityDate before the given time — used
+	// by the background notification scanner.
+	ListMaturingBefore(ctx context.Context, before time.Time) ([]Model, error)
 }

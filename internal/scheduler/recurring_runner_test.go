@@ -19,6 +19,7 @@ import (
 type fakeRecurringService struct {
 	mu         sync.Mutex
 	due        []recurring.Model
+	upcoming   []recurring.Model
 	markRunIDs []common.RecurringID
 	markRunErr error
 }
@@ -43,6 +44,9 @@ func (f *fakeRecurringService) MarkRun(ctx context.Context, userID common.UserID
 	defer f.mu.Unlock()
 	f.markRunIDs = append(f.markRunIDs, id)
 	return f.markRunErr
+}
+func (f *fakeRecurringService) ListUpcoming(ctx context.Context, from, to time.Time) ([]recurring.Model, error) {
+	return f.upcoming, nil
 }
 
 type fakeExpenseService struct {
@@ -82,7 +86,8 @@ func (f *fakeIncomeService) Delete(ctx context.Context, userID common.UserID, id
 }
 
 type fakeInvestmentService struct {
-	created []investment.CreateInput
+	created  []investment.CreateInput
+	maturing []investment.Model
 }
 
 func (f *fakeInvestmentService) Create(ctx context.Context, userID common.UserID, in investment.CreateInput) (investment.Model, error) {
@@ -109,6 +114,9 @@ func (f *fakeInvestmentService) GetXIRR(ctx context.Context, userID common.UserI
 }
 func (f *fakeInvestmentService) GetPortfolioXIRR(ctx context.Context, userID common.UserID) (float64, error) {
 	return 0, nil
+}
+func (f *fakeInvestmentService) ListMaturingBefore(ctx context.Context, before time.Time) ([]investment.Model, error) {
+	return f.maturing, nil
 }
 
 // --- tests ---

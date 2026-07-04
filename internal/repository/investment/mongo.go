@@ -72,21 +72,22 @@ func (m *MongoRepo) GetTypes(ctx context.Context) ([]investment.TypeDoc, error) 
 }
 
 type mongoInvestment struct {
-	ID          primitive.ObjectID   `bson:"_id"`
-	UserID      primitive.ObjectID   `bson:"user_id"`
-	Type        string               `bson:"type"`
-	DisplayType string               `bson:"display_type"`
-	Instrument  string               `bson:"instrument,omitempty"`
-	Amount      primitive.Decimal128 `bson:"amount"`
-	Retrieved   primitive.Decimal128 `bson:"retrieved_amount"`
-	RealizedPnl primitive.Decimal128 `bson:"realized_pnl"`
-	Status      string               `bson:"status"`
-	Date        time.Time            `bson:"date"`
-	Notes       string               `bson:"notes,omitempty"`
-	CreatedAt   time.Time            `bson:"created_at"`
-	UpdatedAt   time.Time            `bson:"updated_at"`
-	DeletedAt   *time.Time           `bson:"deleted_at,omitempty"`
-	DeletedBy   *primitive.ObjectID  `bson:"deleted_by,omitempty"`
+	ID           primitive.ObjectID   `bson:"_id"`
+	UserID       primitive.ObjectID   `bson:"user_id"`
+	Type         string               `bson:"type"`
+	DisplayType  string               `bson:"display_type"`
+	Instrument   string               `bson:"instrument,omitempty"`
+	Amount       primitive.Decimal128 `bson:"amount"`
+	Retrieved    primitive.Decimal128 `bson:"retrieved_amount"`
+	RealizedPnl  primitive.Decimal128 `bson:"realized_pnl"`
+	Status       string               `bson:"status"`
+	Date         time.Time            `bson:"date"`
+	MaturityDate *time.Time           `bson:"maturity_date,omitempty"`
+	Notes        string               `bson:"notes,omitempty"`
+	CreatedAt    time.Time            `bson:"created_at"`
+	UpdatedAt    time.Time            `bson:"updated_at"`
+	DeletedAt    *time.Time           `bson:"deleted_at,omitempty"`
+	DeletedBy    *primitive.ObjectID  `bson:"deleted_by,omitempty"`
 }
 
 func (m *MongoRepo) Create(ctx context.Context, rec investment.Model) (common.InvestmentID, error) {
@@ -104,19 +105,20 @@ func (m *MongoRepo) Create(ctx context.Context, rec investment.Model) (common.In
 	realizedDec, _ := primitive.ParseDecimal128(fmt.Sprintf("%.2f", rec.RealizedPnl))
 
 	doc := mongoInvestment{
-		ID:          primitive.NewObjectID(),
-		UserID:      uid,
-		Type:        rec.Type,
-		DisplayType: rec.DisplayType,
-		Instrument:  rec.Instrument,
-		Amount:      dec,
-		Retrieved:   retrievedDec,
-		RealizedPnl: realizedDec,
-		Status:      string(rec.Status),
-		Date:        rec.Date,
-		Notes:       rec.Notes,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
+		ID:           primitive.NewObjectID(),
+		UserID:       uid,
+		Type:         rec.Type,
+		DisplayType:  rec.DisplayType,
+		Instrument:   rec.Instrument,
+		Amount:       dec,
+		Retrieved:    retrievedDec,
+		RealizedPnl:  realizedDec,
+		Status:       string(rec.Status),
+		Date:         rec.Date,
+		MaturityDate: rec.MaturityDate,
+		Notes:        rec.Notes,
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
 	}
 
 	_, err = m.col.InsertOne(ctx, doc)
@@ -181,6 +183,7 @@ func (m *MongoRepo) ListByMonth(ctx context.Context, userId common.UserID, start
 			RealizedPnl:     shared.Decimal128ToFloat(mi.RealizedPnl),
 			Status:          investment.Status(mi.Status),
 			Date:            mi.Date,
+			MaturityDate:    mi.MaturityDate,
 			Notes:           mi.Notes,
 			CreatedAt:       mi.CreatedAt,
 			UpdatedAt:       mi.UpdatedAt,
@@ -225,6 +228,7 @@ func (m *MongoRepo) GetByID(ctx context.Context, userId common.UserID, id common
 		RealizedPnl:     shared.Decimal128ToFloat(mi.RealizedPnl),
 		Status:          investment.Status(mi.Status),
 		Date:            mi.Date,
+		MaturityDate:    mi.MaturityDate,
 		Notes:           mi.Notes,
 		CreatedAt:       mi.CreatedAt,
 		UpdatedAt:       mi.UpdatedAt,
@@ -298,4 +302,51 @@ func (m *MongoRepo) Delete(ctx context.Context, userId common.UserID, id common.
 	}
 
 	return res.MatchedCount > 0, nil
+}
+
+// ListMaturingBefore returns non-closed, non-deleted investments across all
+// users with a MaturityDate before the given time.
+func (m *MongoRepo) ListMaturingBefore(ctx context.Context, before time.Time) ([]investment.Model, error) {
+	filter := bson.M{
+		"deleted_at":    bson.M{"$exists": false},
+		"maturity_date": bson.M{"$exists": true, "$lt": before},
+		"status":        bson.M{"$ne": string(investment.StatusClosed)},
+	}
+
+	cur, err := m.col.Find(ctx, filter)
+	if err != nil {
+		m.logger.Error("mongo find maturing failed", "request_id", requestctx.RequestID(ctx), "err", err)
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	var out []investment.Model
+	for cur.Next(ctx) {
+		var mi mongoInvestment
+		if err := cur.Decode(&mi); err != nil {
+			m.logger.Error("mongo decode maturing failed", "request_id", requestctx.RequestID(ctx), "err", err)
+			return nil, err
+		}
+		out = append(out, investment.Model{
+			ID:              common.InvestmentID(mi.ID.Hex()),
+			UserID:          common.UserID(mi.UserID.Hex()),
+			Type:            mi.Type,
+			DisplayType:     mi.DisplayType,
+			Instrument:      mi.Instrument,
+			Amount:          shared.Decimal128ToFloat(mi.Amount),
+			RetrievedAmount: shared.Decimal128ToFloat(mi.Retrieved),
+			RealizedPnl:     shared.Decimal128ToFloat(mi.RealizedPnl),
+			Status:          investment.Status(mi.Status),
+			Date:            mi.Date,
+			MaturityDate:    mi.MaturityDate,
+			Notes:           mi.Notes,
+			CreatedAt:       mi.CreatedAt,
+			UpdatedAt:       mi.UpdatedAt,
+		})
+	}
+
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

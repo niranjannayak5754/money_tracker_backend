@@ -17,4 +17,10 @@ type Repository interface {
 	// ListDue returns active, non-deleted templates (across all users)
 	// whose NextRunDate is <= asOf — used by the background scheduler.
 	ListDue(ctx context.Context, asOf time.Time) ([]Model, error)
+
+	// ListUpcoming returns active, non-deleted templates (across all
+	// users) whose NextRunDate falls strictly between from and to — used
+	// by the notification scanner for "bill due soon" reminders, distinct
+	// from ListDue's "materialize this now".
+	ListUpcoming(ctx context.Context, from, to time.Time) ([]Model, error)
 }

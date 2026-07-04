@@ -108,6 +108,18 @@ func (f *fakeRecurringRepo) ListDue(ctx context.Context, asOf time.Time) ([]Mode
 	return out, nil
 }
 
+func (f *fakeRecurringRepo) ListUpcoming(ctx context.Context, from, to time.Time) ([]Model, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []Model
+	for _, m := range f.items {
+		if m.Active && m.NextRunDate.After(from) && !m.NextRunDate.After(to) {
+			out = append(out, *m)
+		}
+	}
+	return out, nil
+}
+
 // --- tests ---
 
 const testUID = common.UserID("user-1")

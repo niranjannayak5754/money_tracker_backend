@@ -419,3 +419,48 @@ func (m *mongoRepo) ReassignCategory(
 
 	return res.ModifiedCount, nil
 }
+
+// SumByCategoryForMonth totals non-deleted expenses for one category within
+// [start, end), via a Mongo-side $sum for precision.
+func (m *mongoRepo) SumByCategoryForMonth(
+	ctx context.Context,
+	userID common.UserID,
+	categoryID common.CategoryID,
+	start, end time.Time,
+) (float64, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return 0, err
+	}
+	cid, err := mongohelper.ObjectIDFromHex(string(categoryID))
+	if err != nil {
+		return 0, err
+	}
+
+	cur, err := m.col.Aggregate(ctx, bson.A{
+		bson.D{{Key: "$match", Value: bson.M{
+			"user_id":     uid,
+			"category_id": cid,
+			"deleted_at":  bson.M{"$exists": false},
+			"date":        bson.M{"$gte": start, "$lt": end},
+		}}},
+		bson.D{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$amount"}}}},
+	})
+	if err != nil {
+		m.logger.Error("mongo aggregate sum by category failed", "request_id", requestctx.RequestID(ctx), "uid", userID, "err", err)
+		return 0, err
+	}
+	defer cur.Close(ctx)
+
+	var out struct {
+		Total primitive.Decimal128 `bson:"total"`
+	}
+	if cur.Next(ctx) {
+		if err := cur.Decode(&out); err != nil {
+			return 0, err
+		}
+		return shared.Decimal128ToFloat(out.Total), nil
+	}
+
+	return 0, nil
+}
