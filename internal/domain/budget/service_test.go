@@ -21,6 +21,12 @@ func newFakeBudgetRepo() *fakeBudgetRepo {
 	return &fakeBudgetRepo{items: map[common.BudgetID]*Model{}}
 }
 
+type fakeCategoryRepo struct{}
+
+func (f *fakeCategoryRepo) ExistsForUserWithType(ctx context.Context, userID common.UserID, categoryID common.CategoryID, categoryType string) (bool, error) {
+	return true, nil
+}
+
 func sameCategory(a, b *common.CategoryID) bool {
 	if a == nil && b == nil {
 		return true
@@ -87,7 +93,7 @@ func categoryID(s string) *common.CategoryID {
 
 func TestResolveForMonth_PicksLatestEffectiveFromNotJustNewestRowOverall(t *testing.T) {
 	repo := newFakeBudgetRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, &fakeCategoryRepo{})
 	ctx := context.Background()
 
 	// Insert out of chronological order: the row created most recently
@@ -119,7 +125,7 @@ func TestResolveForMonth_PicksLatestEffectiveFromNotJustNewestRowOverall(t *test
 
 func TestResolveForMonth_UnbudgetedCategoryNotInResult(t *testing.T) {
 	repo := newFakeBudgetRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, &fakeCategoryRepo{})
 	ctx := context.Background()
 
 	if _, err := svc.Set(ctx, testUID, SetInput{CategoryID: categoryID("cat-1"), Amount: 1000, EffectiveFrom: "2026-01"}); err != nil {
@@ -141,7 +147,7 @@ func TestResolveForMonth_UnbudgetedCategoryNotInResult(t *testing.T) {
 
 func TestResolveForMonth_OverallAndPerCategoryIndependent(t *testing.T) {
 	repo := newFakeBudgetRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, &fakeCategoryRepo{})
 	ctx := context.Background()
 
 	if _, err := svc.Set(ctx, testUID, SetInput{CategoryID: nil, Amount: 20000, EffectiveFrom: "2026-01"}); err != nil {
@@ -166,7 +172,7 @@ func TestResolveForMonth_OverallAndPerCategoryIndependent(t *testing.T) {
 
 func TestResolveForMonth_BeforeAnyEffectiveDate_NotBudgeted(t *testing.T) {
 	repo := newFakeBudgetRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, &fakeCategoryRepo{})
 	ctx := context.Background()
 
 	if _, err := svc.Set(ctx, testUID, SetInput{CategoryID: categoryID("cat-1"), Amount: 1000, EffectiveFrom: "2026-06"}); err != nil {
@@ -184,7 +190,7 @@ func TestResolveForMonth_BeforeAnyEffectiveDate_NotBudgeted(t *testing.T) {
 
 func TestSet_SameMonthUpsertsRatherThanDuplicating(t *testing.T) {
 	repo := newFakeBudgetRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, &fakeCategoryRepo{})
 	ctx := context.Background()
 
 	first, err := svc.Set(ctx, testUID, SetInput{CategoryID: categoryID("cat-1"), Amount: 1000, EffectiveFrom: "2026-01"})

@@ -14,6 +14,7 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	mongohelper "github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 	auditrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/audit"
 )
 
@@ -39,6 +40,8 @@ type mongoCategory struct {
 	UserID    primitive.ObjectID `bson:"user_id"`
 	Name      string             `bson:"name"`
 	Type      string             `bson:"type"`
+	Color     string             `bson:"color,omitempty"`
+	Icon      string             `bson:"icon,omitempty"`
 	Archived  bool               `bson:"archived"`
 	CreatedAt time.Time          `bson:"created_at"`
 }
@@ -59,6 +62,8 @@ func (m *MongoRepo) Create(
 		UserID:    uid,
 		Name:      cat.Name,
 		Type:      cat.Type,
+		Color:     cat.Color,
+		Icon:      cat.Icon,
 		Archived:  cat.Archived,
 		CreatedAt: time.Now().UTC(),
 	}
@@ -82,6 +87,8 @@ func (m *MongoRepo) Create(
 			"user_id": doc.UserID.Hex(),
 			"name":    doc.Name,
 			"type":    doc.Type,
+			"color":   doc.Color,
+			"icon":    doc.Icon,
 		},
 	})
 
@@ -141,6 +148,8 @@ func (m *MongoRepo) List(
 			UserID:    common.UserID(mc.UserID.Hex()),
 			Name:      mc.Name,
 			Type:      mc.Type,
+			Color:     mc.Color,
+			Icon:      mc.Icon,
 			Archived:  mc.Archived,
 			CreatedAt: mc.CreatedAt,
 		})
@@ -151,6 +160,52 @@ func (m *MongoRepo) List(
 	}
 
 	return out, nil
+}
+
+// GetByID fetches a single category by ID, scoped to the user — used by
+// archive/reassign flows that need to know the category's own Type before
+// deciding which entity (expense vs income) to check/reassign against.
+func (m *MongoRepo) GetByID(
+	ctx context.Context,
+	userID common.UserID,
+	categoryID common.CategoryID,
+) (category.Model, error) {
+
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return category.Model{}, err
+	}
+	cid, err := mongohelper.ObjectIDFromHex(string(categoryID))
+	if err != nil {
+		return category.Model{}, err
+	}
+
+	var mc mongoCategory
+	err = m.col.FindOne(ctx, bson.M{"_id": cid, "user_id": uid}).Decode(&mc)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return category.Model{}, repository.ErrNotFound
+		}
+		m.logger.Error(
+			"mongo find one failed",
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID,
+			"category_id", categoryID,
+			"err", err,
+		)
+		return category.Model{}, err
+	}
+
+	return category.Model{
+		ID:        common.CategoryID(mc.ID.Hex()),
+		UserID:    common.UserID(mc.UserID.Hex()),
+		Name:      mc.Name,
+		Type:      mc.Type,
+		Color:     mc.Color,
+		Icon:      mc.Icon,
+		Archived:  mc.Archived,
+		CreatedAt: mc.CreatedAt,
+	}, nil
 }
 
 // Update modifies category fields.
@@ -223,6 +278,47 @@ func (m *MongoRepo) ExistsForUser(
 	filter := bson.M{
 		"_id":      cid,
 		"user_id":  uid,
+		"archived": bson.M{"$ne": true},
+	}
+
+	count, err := m.col.CountDocuments(ctx, filter)
+	if err != nil {
+		m.logger.Error(
+			"mongo count failed",
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID,
+			"category_id", categoryID,
+			"err", err,
+		)
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// ExistsForUserWithType is like ExistsForUser but also requires the
+// category's Type to match.
+func (m *MongoRepo) ExistsForUserWithType(
+	ctx context.Context,
+	userID common.UserID,
+	categoryID common.CategoryID,
+	categoryType string,
+) (bool, error) {
+
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return false, err
+	}
+
+	cid, err := mongohelper.ObjectIDFromHex(string(categoryID))
+	if err != nil {
+		return false, err
+	}
+
+	filter := bson.M{
+		"_id":      cid,
+		"user_id":  uid,
+		"type":     categoryType,
 		"archived": bson.M{"$ne": true},
 	}
 

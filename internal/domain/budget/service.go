@@ -21,10 +21,11 @@ type Service interface {
 
 type service struct {
 	repo Repository
+	cats CategoryRepository
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, cats CategoryRepository) Service {
+	return &service{repo: repo, cats: cats}
 }
 
 type SetInput struct {
@@ -45,6 +46,15 @@ func (s *service) Set(ctx context.Context, userID common.UserID, in SetInput) (M
 	}
 	if _, _, err := shared.MonthBounds(in.EffectiveFrom); err != nil {
 		return Model{}, err
+	}
+	if in.CategoryID != nil {
+		ok, err := s.cats.ExistsForUserWithType(ctx, userID, *in.CategoryID, "expense")
+		if err != nil {
+			return Model{}, apperr.InternalErr("category validation failed", err)
+		}
+		if !ok {
+			return Model{}, apperr.ValidationErr("invalid category — it must be an existing, non-archived expense category")
+		}
 	}
 
 	now := time.Now().UTC()

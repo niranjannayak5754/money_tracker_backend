@@ -69,7 +69,7 @@ func (f *fakeExpenseRepo) SumByCategoryForMonth(ctx context.Context, userID comm
 
 type fakeCategoryRepo struct{}
 
-func (f *fakeCategoryRepo) ExistsForUser(ctx context.Context, userID common.UserID, categoryID common.CategoryID) (bool, error) {
+func (f *fakeCategoryRepo) ExistsForUserWithType(ctx context.Context, userID common.UserID, categoryID common.CategoryID, categoryType string) (bool, error) {
 	return true, nil
 }
 

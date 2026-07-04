@@ -37,16 +37,17 @@ func New(
 }
 
 type mongoIncome struct {
-	ID        primitive.ObjectID   `bson:"_id"`
-	UserID    primitive.ObjectID   `bson:"user_id"`
-	Amount    primitive.Decimal128 `bson:"amount"`
-	Date      time.Time            `bson:"date"`
-	Source    string               `bson:"source,omitempty"`
-	Notes     string               `bson:"notes,omitempty"`
-	CreatedAt time.Time            `bson:"created_at"`
-	UpdatedAt time.Time            `bson:"updated_at"`
-	DeletedAt *time.Time           `bson:"deleted_at,omitempty"`
-	DeletedBy *primitive.ObjectID  `bson:"deleted_by,omitempty"`
+	ID         primitive.ObjectID   `bson:"_id"`
+	UserID     primitive.ObjectID   `bson:"user_id"`
+	Amount     primitive.Decimal128 `bson:"amount"`
+	Date       time.Time            `bson:"date"`
+	CategoryID primitive.ObjectID   `bson:"category_id"`
+	Source     string               `bson:"source,omitempty"`
+	Notes      string               `bson:"notes,omitempty"`
+	CreatedAt  time.Time            `bson:"created_at"`
+	UpdatedAt  time.Time            `bson:"updated_at"`
+	DeletedAt  *time.Time           `bson:"deleted_at,omitempty"`
+	DeletedBy  *primitive.ObjectID  `bson:"deleted_by,omitempty"`
 }
 
 func (m *MongoRepo) Create(ctx context.Context, rec income.Model) (common.IncomeID, error) {
@@ -60,15 +61,21 @@ func (m *MongoRepo) Create(ctx context.Context, rec income.Model) (common.Income
 		return "", err
 	}
 
+	cid, err := mongohelper.ObjectIDFromHex(string(rec.CategoryID))
+	if err != nil {
+		return "", err
+	}
+
 	doc := mongoIncome{
-		ID:        primitive.NewObjectID(),
-		UserID:    uid,
-		Amount:    dec,
-		Date:      rec.Date,
-		Source:    rec.Source,
-		Notes:     rec.Notes,
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
+		ID:         primitive.NewObjectID(),
+		UserID:     uid,
+		Amount:     dec,
+		Date:       rec.Date,
+		CategoryID: cid,
+		Source:     rec.Source,
+		Notes:      rec.Notes,
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
 	}
 
 	_, err = m.col.InsertOne(ctx, doc)
@@ -86,11 +93,12 @@ func (m *MongoRepo) Create(ctx context.Context, rec income.Model) (common.Income
 		Entity:   "income",
 		EntityID: doc.ID.Hex(),
 		Payload: bson.M{
-			"user_id": doc.UserID.Hex(),
-			"amount":  shared.Decimal128ToFloat(doc.Amount),
-			"date":    doc.Date,
-			"source":  doc.Source,
-			"notes":   doc.Notes,
+			"user_id":     doc.UserID.Hex(),
+			"amount":      shared.Decimal128ToFloat(doc.Amount),
+			"date":        doc.Date,
+			"category_id": doc.CategoryID.Hex(),
+			"source":      doc.Source,
+			"notes":       doc.Notes,
 		},
 	})
 	if err != nil {
@@ -144,14 +152,15 @@ func (m *MongoRepo) ListByMonth(
 		}
 
 		out = append(out, income.Model{
-			ID:        common.IncomeID(mi.ID.Hex()),
-			UserID:    common.UserID(mi.UserID.Hex()),
-			Amount:    shared.Decimal128ToFloat(mi.Amount),
-			Date:      mi.Date,
-			Source:    mi.Source,
-			Notes:     mi.Notes,
-			CreatedAt: mi.CreatedAt,
-			UpdatedAt: mi.UpdatedAt,
+			ID:         common.IncomeID(mi.ID.Hex()),
+			UserID:     common.UserID(mi.UserID.Hex()),
+			Amount:     shared.Decimal128ToFloat(mi.Amount),
+			Date:       mi.Date,
+			CategoryID: common.CategoryID(mi.CategoryID.Hex()),
+			Source:     mi.Source,
+			Notes:      mi.Notes,
+			CreatedAt:  mi.CreatedAt,
+			UpdatedAt:  mi.UpdatedAt,
 		})
 	}
 
@@ -178,7 +187,8 @@ func (m *MongoRepo) Update(
 
 	converted := bson.M{}
 	for k, v := range set {
-		if k == "amount" {
+		switch k {
+		case "amount":
 			f, ok := v.(float64)
 			if !ok {
 				return false, fmt.Errorf("amount must be a float64")
@@ -188,9 +198,23 @@ func (m *MongoRepo) Update(
 				return false, err
 			}
 			converted["amount"] = dec
-			continue
+		case "category_id":
+			cid, ok := v.(common.CategoryID)
+			if !ok {
+				s, ok := v.(string)
+				if !ok {
+					return false, fmt.Errorf("category_id must be a string")
+				}
+				cid = common.CategoryID(s)
+			}
+			oid, err := mongohelper.ObjectIDFromHex(string(cid))
+			if err != nil {
+				return false, err
+			}
+			converted["category_id"] = oid
+		default:
+			converted[k] = v
 		}
-		converted[k] = v
 	}
 
 	res, err := m.col.UpdateOne(
@@ -263,4 +287,94 @@ func (m *MongoRepo) Delete(
 	}
 
 	return res.MatchedCount > 0, nil
+}
+
+// CountByCategory counts a user's non-deleted income entries referencing a
+// category — used to guard category archiving.
+func (m *MongoRepo) CountByCategory(
+	ctx context.Context,
+	userID common.UserID,
+	categoryID common.CategoryID,
+) (int64, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return 0, err
+	}
+	cid, err := mongohelper.ObjectIDFromHex(string(categoryID))
+	if err != nil {
+		return 0, err
+	}
+
+	count, err := m.col.CountDocuments(ctx, bson.M{
+		"user_id":     uid,
+		"category_id": cid,
+		"deleted_at":  bson.M{"$exists": false},
+	})
+	if err != nil {
+		m.logger.Error(
+			"mongo count by category failed",
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID,
+			"category_id", categoryID,
+			"err", err,
+		)
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// ReassignCategory bulk-moves a user's non-deleted income entries from one
+// category to another — used when archiving a category with reassignment.
+func (m *MongoRepo) ReassignCategory(
+	ctx context.Context,
+	userID common.UserID,
+	fromCategoryID, toCategoryID common.CategoryID,
+) (int64, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return 0, err
+	}
+	fromID, err := mongohelper.ObjectIDFromHex(string(fromCategoryID))
+	if err != nil {
+		return 0, err
+	}
+	toID, err := mongohelper.ObjectIDFromHex(string(toCategoryID))
+	if err != nil {
+		return 0, err
+	}
+
+	res, err := m.col.UpdateMany(
+		ctx,
+		bson.M{
+			"user_id":     uid,
+			"category_id": fromID,
+			"deleted_at":  bson.M{"$exists": false},
+		},
+		bson.M{"$set": bson.M{"category_id": toID, "updated_at": time.Now().UTC()}},
+	)
+	if err != nil {
+		m.logger.Error(
+			"mongo reassign category failed",
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID,
+			"err", err,
+		)
+		return 0, err
+	}
+
+	if res.ModifiedCount > 0 {
+		_ = m.audit.Write(ctx, auditrepo.Entry{
+			Action: "reassign_category",
+			Entity: "income",
+			Payload: bson.M{
+				"user_id":          uid.Hex(),
+				"from_category_id": string(fromCategoryID),
+				"to_category_id":   string(toCategoryID),
+				"count":            res.ModifiedCount,
+			},
+		})
+	}
+
+	return res.ModifiedCount, nil
 }

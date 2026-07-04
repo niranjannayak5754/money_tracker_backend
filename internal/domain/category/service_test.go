@@ -2,6 +2,7 @@ package category
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -10,6 +11,8 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/ptr"
 )
+
+var errNotFound = errors.New("category not found")
 
 // --- fakes (in-memory, no DB dependency) ---
 
@@ -82,6 +85,26 @@ func (f *fakeCategoryRepo) ExistsForUser(ctx context.Context, userID common.User
 	return true, nil
 }
 
+func (f *fakeCategoryRepo) ExistsForUserWithType(ctx context.Context, userID common.UserID, categoryID common.CategoryID, categoryType string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, ok := f.items[categoryID]
+	if !ok || m.UserID != userID || m.Archived || m.Type != categoryType {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (f *fakeCategoryRepo) GetByID(ctx context.Context, userID common.UserID, categoryID common.CategoryID) (Model, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, ok := f.items[categoryID]
+	if !ok || m.UserID != userID {
+		return Model{}, errNotFound
+	}
+	return *m, nil
+}
+
 type fakeExpenseRepo struct {
 	mu            sync.Mutex
 	countByCat    map[common.CategoryID]int64
@@ -107,13 +130,38 @@ func (f *fakeExpenseRepo) ReassignCategory(ctx context.Context, userID common.Us
 	return n, nil
 }
 
+type fakeIncomeRepo struct {
+	mu            sync.Mutex
+	countByCat    map[common.CategoryID]int64
+	reassignCalls []struct{ from, to common.CategoryID }
+}
+
+func newFakeIncomeRepo() *fakeIncomeRepo {
+	return &fakeIncomeRepo{countByCat: map[common.CategoryID]int64{}}
+}
+
+func (f *fakeIncomeRepo) CountByCategory(ctx context.Context, userID common.UserID, categoryID common.CategoryID) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.countByCat[categoryID], nil
+}
+
+func (f *fakeIncomeRepo) ReassignCategory(ctx context.Context, userID common.UserID, fromCategoryID, toCategoryID common.CategoryID) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := f.countByCat[fromCategoryID]
+	f.reassignCalls = append(f.reassignCalls, struct{ from, to common.CategoryID }{fromCategoryID, toCategoryID})
+	f.countByCat[fromCategoryID] = 0
+	return n, nil
+}
+
 // --- tests ---
 
 const testUID = common.UserID("user-1")
 
-func mustCreateCategory(t *testing.T, svc Service, name string) Model {
+func mustCreateCategory(t *testing.T, svc Service, name, catType string) Model {
 	t.Helper()
-	m, err := svc.Create(context.Background(), testUID, CreateInput{Name: name, Type: "expense"})
+	m, err := svc.Create(context.Background(), testUID, CreateInput{Name: name, Type: catType})
 	if err != nil {
 		t.Fatalf("create category failed: %v", err)
 	}
@@ -123,10 +171,10 @@ func mustCreateCategory(t *testing.T, svc Service, name string) Model {
 func TestUpdate_ArchiveBlockedWhenExpensesReference(t *testing.T) {
 	catRepo := newFakeCategoryRepo()
 	expRepo := newFakeExpenseRepo()
-	svc := NewService(catRepo, expRepo)
+	svc := NewService(catRepo, expRepo, newFakeIncomeRepo())
 	ctx := context.Background()
 
-	cat := mustCreateCategory(t, svc, "Groceries")
+	cat := mustCreateCategory(t, svc, "Groceries", "expense")
 	expRepo.countByCat[cat.ID] = 3
 
 	err := svc.Update(ctx, testUID, cat.ID, UpdateInput{Archived: ptr.Bool(true)})
@@ -141,10 +189,10 @@ func TestUpdate_ArchiveBlockedWhenExpensesReference(t *testing.T) {
 func TestUpdate_ArchiveSucceedsWhenNoExpensesReference(t *testing.T) {
 	catRepo := newFakeCategoryRepo()
 	expRepo := newFakeExpenseRepo()
-	svc := NewService(catRepo, expRepo)
+	svc := NewService(catRepo, expRepo, newFakeIncomeRepo())
 	ctx := context.Background()
 
-	cat := mustCreateCategory(t, svc, "Groceries")
+	cat := mustCreateCategory(t, svc, "Groceries", "expense")
 
 	if err := svc.Update(ctx, testUID, cat.ID, UpdateInput{Archived: ptr.Bool(true)}); err != nil {
 		t.Fatalf("expected archive to succeed with no referencing expenses, got %v", err)
@@ -154,11 +202,11 @@ func TestUpdate_ArchiveSucceedsWhenNoExpensesReference(t *testing.T) {
 func TestUpdate_ArchiveWithReassignMovesExpensesFirst(t *testing.T) {
 	catRepo := newFakeCategoryRepo()
 	expRepo := newFakeExpenseRepo()
-	svc := NewService(catRepo, expRepo)
+	svc := NewService(catRepo, expRepo, newFakeIncomeRepo())
 	ctx := context.Background()
 
-	from := mustCreateCategory(t, svc, "Groceries")
-	to := mustCreateCategory(t, svc, "Household")
+	from := mustCreateCategory(t, svc, "Groceries", "expense")
+	to := mustCreateCategory(t, svc, "Household", "expense")
 	expRepo.countByCat[from.ID] = 5
 
 	err := svc.Update(ctx, testUID, from.ID, UpdateInput{
@@ -184,10 +232,10 @@ func TestUpdate_ArchiveWithReassignMovesExpensesFirst(t *testing.T) {
 func TestUpdate_ReassignToSelf_Rejected(t *testing.T) {
 	catRepo := newFakeCategoryRepo()
 	expRepo := newFakeExpenseRepo()
-	svc := NewService(catRepo, expRepo)
+	svc := NewService(catRepo, expRepo, newFakeIncomeRepo())
 	ctx := context.Background()
 
-	cat := mustCreateCategory(t, svc, "Groceries")
+	cat := mustCreateCategory(t, svc, "Groceries", "expense")
 
 	err := svc.Update(ctx, testUID, cat.ID, UpdateInput{
 		Archived:   ptr.Bool(true),
@@ -201,7 +249,7 @@ func TestUpdate_ReassignToSelf_Rejected(t *testing.T) {
 func TestCreate_ColorValidation(t *testing.T) {
 	catRepo := newFakeCategoryRepo()
 	expRepo := newFakeExpenseRepo()
-	svc := NewService(catRepo, expRepo)
+	svc := NewService(catRepo, expRepo, newFakeIncomeRepo())
 	ctx := context.Background()
 
 	if _, err := svc.Create(ctx, testUID, CreateInput{Name: "Groceries", Type: "expense", Color: "red"}); err == nil {
@@ -210,5 +258,68 @@ func TestCreate_ColorValidation(t *testing.T) {
 
 	if _, err := svc.Create(ctx, testUID, CreateInput{Name: "Groceries", Type: "expense", Color: "#FF00AA"}); err != nil {
 		t.Fatalf("expected valid hex color to be accepted, got %v", err)
+	}
+}
+
+func TestUpdate_ArchiveBlockedWhenIncomeReferences(t *testing.T) {
+	catRepo := newFakeCategoryRepo()
+	incRepo := newFakeIncomeRepo()
+	svc := NewService(catRepo, newFakeExpenseRepo(), incRepo)
+	ctx := context.Background()
+
+	cat := mustCreateCategory(t, svc, "Salary", "income")
+	incRepo.countByCat[cat.ID] = 2
+
+	err := svc.Update(ctx, testUID, cat.ID, UpdateInput{Archived: ptr.Bool(true)})
+	if err == nil {
+		t.Fatalf("expected archive to be blocked when income entries reference the category")
+	}
+	if !apperr.IsKind(err, apperr.Validation) {
+		t.Fatalf("expected validation error kind, got %v", err)
+	}
+}
+
+func TestUpdate_ArchiveWithReassignMovesIncomeFirst(t *testing.T) {
+	catRepo := newFakeCategoryRepo()
+	incRepo := newFakeIncomeRepo()
+	svc := NewService(catRepo, newFakeExpenseRepo(), incRepo)
+	ctx := context.Background()
+
+	from := mustCreateCategory(t, svc, "Salary", "income")
+	to := mustCreateCategory(t, svc, "Freelance", "income")
+	incRepo.countByCat[from.ID] = 4
+
+	err := svc.Update(ctx, testUID, from.ID, UpdateInput{
+		Archived:   ptr.Bool(true),
+		ReassignTo: &to.ID,
+	})
+	if err != nil {
+		t.Fatalf("expected archive-with-reassign to succeed, got %v", err)
+	}
+
+	if len(incRepo.reassignCalls) != 1 || incRepo.reassignCalls[0].from != from.ID || incRepo.reassignCalls[0].to != to.ID {
+		t.Fatalf("expected exactly one reassign call from %v to %v, got %v", from.ID, to.ID, incRepo.reassignCalls)
+	}
+}
+
+func TestUpdate_ReassignToDifferentTypeCategory_Rejected(t *testing.T) {
+	catRepo := newFakeCategoryRepo()
+	expRepo := newFakeExpenseRepo()
+	svc := NewService(catRepo, expRepo, newFakeIncomeRepo())
+	ctx := context.Background()
+
+	expenseCat := mustCreateCategory(t, svc, "Groceries", "expense")
+	incomeCat := mustCreateCategory(t, svc, "Salary", "income")
+	expRepo.countByCat[expenseCat.ID] = 1
+
+	err := svc.Update(ctx, testUID, expenseCat.ID, UpdateInput{
+		Archived:   ptr.Bool(true),
+		ReassignTo: &incomeCat.ID,
+	})
+	if err == nil {
+		t.Fatalf("expected reassigning an expense category to an income-type category to be rejected")
+	}
+	if !apperr.IsKind(err, apperr.Validation) {
+		t.Fatalf("expected validation error kind, got %v", err)
 	}
 }

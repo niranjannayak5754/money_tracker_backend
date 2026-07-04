@@ -19,3 +19,16 @@ type Repository interface {
 
 	Delete(ctx context.Context, userID common.UserID, id common.BudgetID) (bool, error)
 }
+
+// CategoryRepository is a narrow cross-domain dependency used to validate
+// that a budget's category exists, isn't archived, and is expense-type —
+// budgets are spend caps, so an income-type category can never be "spent
+// against" and would otherwise silently become a dead, unresolvable row.
+type CategoryRepository interface {
+	ExistsForUserWithType(
+		ctx context.Context,
+		userID common.UserID,
+		categoryID common.CategoryID,
+		categoryType string,
+	) (bool, error)
+}

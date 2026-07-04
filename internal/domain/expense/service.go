@@ -69,7 +69,7 @@ func (s *service) Create(
 		return Model{}, apperr.ValidationErr("amount must be greater than zero")
 	}
 
-	ok, err := s.cats.ExistsForUser(ctx, userID, in.CategoryID)
+	ok, err := s.cats.ExistsForUserWithType(ctx, userID, in.CategoryID, "expense")
 	if err != nil {
 		return Model{}, apperr.InternalErr("category validation failed", err)
 	}
@@ -202,7 +202,7 @@ func (s *service) Update(
 	}
 
 	if in.CategoryID != nil {
-		ok, err := s.cats.ExistsForUser(ctx, userID, *in.CategoryID)
+		ok, err := s.cats.ExistsForUserWithType(ctx, userID, *in.CategoryID, "expense")
 		if err != nil {
 			return apperr.InternalErr("category validation failed", err)
 		}

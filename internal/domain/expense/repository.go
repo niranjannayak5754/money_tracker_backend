@@ -53,9 +53,10 @@ type Repository interface {
 
 // Cross-domain dependency (category)
 type CategoryRepository interface {
-	ExistsForUser(
+	ExistsForUserWithType(
 		ctx context.Context,
 		userID common.UserID,
 		categoryID common.CategoryID,
+		categoryType string,
 	) (bool, error)
 }

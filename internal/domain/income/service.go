@@ -18,24 +18,27 @@ type Service interface {
 
 type service struct {
 	repo Repository
+	cats CategoryRepository
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, cats CategoryRepository) Service {
+	return &service{repo: repo, cats: cats}
 }
 
 type CreateInput struct {
-	Amount float64
-	Date   time.Time
-	Source string
-	Notes  string
+	Amount     float64
+	Date       time.Time
+	CategoryID common.CategoryID
+	Source     string
+	Notes      string
 }
 
 type UpdateInput struct {
-	Amount *float64
-	Date   *time.Time
-	Source *string
-	Notes  *string
+	Amount     *float64
+	Date       *time.Time
+	CategoryID *common.CategoryID
+	Source     *string
+	Notes      *string
 }
 
 func (s *service) Create(
@@ -48,17 +51,30 @@ func (s *service) Create(
 		return Model{}, apperr.ValidationErr("amount must be greater than zero")
 	}
 
+	if in.CategoryID == "" {
+		return Model{}, apperr.ValidationErr("category_id is required")
+	}
+
+	ok, err := s.cats.ExistsForUserWithType(ctx, userID, in.CategoryID, "income")
+	if err != nil {
+		return Model{}, apperr.InternalErr("category validation failed", err)
+	}
+	if !ok {
+		return Model{}, apperr.ValidationErr("invalid category")
+	}
+
 	now := time.Now().UTC()
 
 	rec := Model{
-		ID:        "",
-		UserID:    userID,
-		Amount:    in.Amount,
-		Date:      shared.ChooseDate(in.Date),
-		Source:    in.Source,
-		Notes:     in.Notes,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:         "",
+		UserID:     userID,
+		Amount:     in.Amount,
+		Date:       shared.ChooseDate(in.Date),
+		CategoryID: in.CategoryID,
+		Source:     in.Source,
+		Notes:      in.Notes,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
 	id, err := s.repo.Create(ctx, rec)
@@ -115,6 +131,16 @@ func (s *service) Update(
 
 	if in.Date != nil {
 		set["date"] = shared.ChooseDate(*in.Date)
+	}
+	if in.CategoryID != nil {
+		ok, err := s.cats.ExistsForUserWithType(ctx, userID, *in.CategoryID, "income")
+		if err != nil {
+			return apperr.InternalErr("category validation failed", err)
+		}
+		if !ok {
+			return apperr.ValidationErr("invalid category")
+		}
+		set["category_id"] = *in.CategoryID
 	}
 	if in.Source != nil {
 		set["source"] = *in.Source

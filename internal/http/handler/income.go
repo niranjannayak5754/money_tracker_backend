@@ -51,10 +51,11 @@ func (h *IncomeHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var in struct {
-		Amount float64             `json:"amount"`
-		Date   shared.FlexibleTime `json:"date"`
-		Source string              `json:"source"`
-		Notes  string              `json:"notes"`
+		Amount     float64             `json:"amount"`
+		Date       shared.FlexibleTime `json:"date"`
+		CategoryID string              `json:"category_id"`
+		Source     string              `json:"source"`
+		Notes      string              `json:"notes"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -71,10 +72,11 @@ func (h *IncomeHandler) create(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		uid,
 		income.CreateInput{
-			Amount: in.Amount,
-			Date:   shared.ChooseDate(in.Date.Time),
-			Source: in.Source,
-			Notes:  in.Notes,
+			Amount:     in.Amount,
+			Date:       shared.ChooseDate(in.Date.Time),
+			CategoryID: common.CategoryID(in.CategoryID),
+			Source:     in.Source,
+			Notes:      in.Notes,
 		},
 	)
 	if err != nil {
@@ -132,10 +134,11 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 	incomeID := common.IncomeID(chi.URLParam(r, "id"))
 
 	var in struct {
-		Amount *float64             `json:"amount"`
-		Date   *shared.FlexibleTime `json:"date"`
-		Source *string              `json:"source"`
-		Notes  *string              `json:"notes"`
+		Amount     *float64             `json:"amount"`
+		Date       *shared.FlexibleTime `json:"date"`
+		CategoryID *string              `json:"category_id"`
+		Source     *string              `json:"source"`
+		Notes      *string              `json:"notes"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -149,15 +152,22 @@ func (h *IncomeHandler) update(w http.ResponseWriter, r *http.Request) {
 		date = &d
 	}
 
+	var categoryID *common.CategoryID
+	if in.CategoryID != nil {
+		cid := common.CategoryID(*in.CategoryID)
+		categoryID = &cid
+	}
+
 	err := h.svc.Update(
 		r.Context(),
 		uid,
 		incomeID,
 		income.UpdateInput{
-			Amount: in.Amount,
-			Date:   date,
-			Source: in.Source,
-			Notes:  in.Notes,
+			Amount:     in.Amount,
+			Date:       date,
+			CategoryID: categoryID,
+			Source:     in.Source,
+			Notes:      in.Notes,
 		},
 	)
 

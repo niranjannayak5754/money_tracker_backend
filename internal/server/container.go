@@ -94,9 +94,9 @@ func BuildContainer(
 	notificationRepo := notificationrepo.New(db, logger)
 
 	userSvc := user.NewService(userRepo, sessionRepo)
-	categorySvc := category.NewService(categoryRepo, expenseRepo)
-	incomeSvc := income.NewService(incomeRepo)
-	budgetSvc := budget.NewService(budgetRepo)
+	categorySvc := category.NewService(categoryRepo, expenseRepo, incomeRepo)
+	incomeSvc := income.NewService(incomeRepo, categoryRepo)
+	budgetSvc := budget.NewService(budgetRepo, categoryRepo)
 	notificationSvc := notification.NewService(notificationRepo)
 	expenseSvc := expense.NewService(expenseRepo, categoryRepo, budgetSvc, notificationSvc)
 	summarySvc := summary.NewService(summaryRepo, budgetSvc)
