@@ -11,6 +11,7 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/category"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/debt"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/expense"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/goal"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/recurring"
@@ -23,6 +24,7 @@ import (
 	categoryrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/category"
 	debtrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/debt"
 	expenserepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/expense"
+	goalrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/goal"
 	incomerepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/income"
 	investmentrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/investment"
 	recurringrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/recurring"
@@ -46,6 +48,7 @@ type Container struct {
 	Debt        debt.Service
 	Recurring   recurring.Service
 	Budget      budget.Service
+	Goal        goal.Service
 
 	// middleware
 	AuthMw *middleware.AuthMiddleware
@@ -61,6 +64,7 @@ type Container struct {
 	DebtH        *handler.DebtHandler
 	RecurringH   *handler.RecurringHandler
 	BudgetH      *handler.BudgetHandler
+	GoalH        *handler.GoalHandler
 }
 
 func BuildContainer(
@@ -82,6 +86,7 @@ func BuildContainer(
 	debtRepo := debtrepo.New(db, logger)
 	recurringRepo := recurringrepo.New(db, logger)
 	budgetRepo := budgetrepo.New(db, logger)
+	goalRepo := goalrepo.New(db, logger)
 
 	userSvc := user.NewService(userRepo, sessionRepo)
 	categorySvc := category.NewService(categoryRepo, expenseRepo)
@@ -93,6 +98,7 @@ func BuildContainer(
 	bankAccountSvc := bankaccount.NewService(bankAccountRepo)
 	debtSvc := debt.NewService(debtRepo)
 	recurringSvc := recurring.NewService(recurringRepo)
+	goalSvc := goal.NewService(goalRepo, bankAccountRepo, investmentRepo)
 
 	authMw := middleware.NewAuthMiddleware(cfg.JWTSecret)
 
@@ -106,6 +112,7 @@ func BuildContainer(
 	debtH := handler.NewDebtHandler(debtSvc, logger)
 	recurringH := handler.NewRecurringHandler(recurringSvc, logger)
 	budgetH := handler.NewBudgetHandler(budgetSvc, logger)
+	goalH := handler.NewGoalHandler(goalSvc, logger)
 
 	return &Container{
 		Users:       userSvc,
@@ -118,6 +125,7 @@ func BuildContainer(
 		Debt:        debtSvc,
 		Recurring:   recurringSvc,
 		Budget:      budgetSvc,
+		Goal:        goalSvc,
 
 		AuthMw: authMw,
 
@@ -131,5 +139,6 @@ func BuildContainer(
 		DebtH:        debtH,
 		RecurringH:   recurringH,
 		BudgetH:      budgetH,
+		GoalH:        goalH,
 	}
 }

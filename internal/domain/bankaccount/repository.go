@@ -9,6 +9,7 @@ import (
 type Repository interface {
 	Create(ctx context.Context, m Model) (common.BankAccountID, error)
 	List(ctx context.Context, userID common.UserID) ([]Model, error)
+	GetByID(ctx context.Context, userID common.UserID, id common.BankAccountID) (*Model, error)
 	Update(ctx context.Context, userID common.UserID, id common.BankAccountID, set map[string]any) (bool, error)
 	Delete(ctx context.Context, userID common.UserID, id common.BankAccountID) (bool, error)
 

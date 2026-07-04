@@ -16,6 +16,7 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	mongohelper "github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 	auditrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/audit"
 )
 
@@ -124,6 +125,38 @@ func (m *MongoRepo) List(ctx context.Context, userID common.UserID) ([]bankaccou
 		return nil, err
 	}
 	return out, nil
+}
+
+// GetByID returns a single non-deleted bank account belonging to the user.
+func (m *MongoRepo) GetByID(ctx context.Context, userID common.UserID, id common.BankAccountID) (*bankaccount.Model, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return nil, err
+	}
+	aid, err := mongohelper.ObjectIDFromHex(string(id))
+	if err != nil {
+		return nil, err
+	}
+
+	var ma mongoBankAccount
+	err = m.col.FindOne(ctx, bson.M{"_id": aid, "user_id": uid, "deleted_at": bson.M{"$exists": false}}).Decode(&ma)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, repository.ErrNotFound
+		}
+		m.logger.Error("mongo find by id failed", "request_id", requestctx.RequestID(ctx), "uid", userID, "bank_account_id", id, "err", err)
+		return nil, err
+	}
+
+	return &bankaccount.Model{
+		ID:           common.BankAccountID(ma.ID.Hex()),
+		UserID:       common.UserID(ma.UserID.Hex()),
+		Name:         ma.Name,
+		Balance:      shared.Decimal128ToFloat(ma.Balance),
+		InterestRate: ma.InterestRate,
+		CreatedAt:    ma.CreatedAt,
+		UpdatedAt:    ma.UpdatedAt,
+	}, nil
 }
 
 func (m *MongoRepo) Update(ctx context.Context, userID common.UserID, id common.BankAccountID, set map[string]any) (bool, error) {
