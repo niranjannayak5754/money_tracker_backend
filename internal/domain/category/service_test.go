@@ -115,12 +115,6 @@ func newFakeExpenseRepo() *fakeExpenseRepo {
 	return &fakeExpenseRepo{countByCat: map[common.CategoryID]int64{}}
 }
 
-func (f *fakeExpenseRepo) CountByCategory(ctx context.Context, userID common.UserID, categoryID common.CategoryID) (int64, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.countByCat[categoryID], nil
-}
-
 func (f *fakeExpenseRepo) ReassignCategory(ctx context.Context, userID common.UserID, fromCategoryID, toCategoryID common.CategoryID) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -138,12 +132,6 @@ type fakeIncomeRepo struct {
 
 func newFakeIncomeRepo() *fakeIncomeRepo {
 	return &fakeIncomeRepo{countByCat: map[common.CategoryID]int64{}}
-}
-
-func (f *fakeIncomeRepo) CountByCategory(ctx context.Context, userID common.UserID, categoryID common.CategoryID) (int64, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.countByCat[categoryID], nil
 }
 
 func (f *fakeIncomeRepo) ReassignCategory(ctx context.Context, userID common.UserID, fromCategoryID, toCategoryID common.CategoryID) (int64, error) {
@@ -168,7 +156,7 @@ func mustCreateCategory(t *testing.T, svc Service, name, catType string) Model {
 	return m
 }
 
-func TestUpdate_ArchiveBlockedWhenExpensesReference(t *testing.T) {
+func TestUpdate_ArchiveSucceedsEvenWhenExpensesReference(t *testing.T) {
 	catRepo := newFakeCategoryRepo()
 	expRepo := newFakeExpenseRepo()
 	svc := NewService(catRepo, expRepo, newFakeIncomeRepo())
@@ -177,12 +165,15 @@ func TestUpdate_ArchiveBlockedWhenExpensesReference(t *testing.T) {
 	cat := mustCreateCategory(t, svc, "Groceries", "expense")
 	expRepo.countByCat[cat.ID] = 3
 
-	err := svc.Update(ctx, testUID, cat.ID, UpdateInput{Archived: ptr.Bool(true)})
-	if err == nil {
-		t.Fatalf("expected archive to be blocked when expenses reference the category")
+	// Archiving never blocks on existing references — those expenses keep
+	// resolving fine by ID against the now-archived category; only new
+	// expenses are prevented from picking it (enforced elsewhere, via
+	// ExistsForUserWithType filtering out archived categories).
+	if err := svc.Update(ctx, testUID, cat.ID, UpdateInput{Archived: ptr.Bool(true)}); err != nil {
+		t.Fatalf("expected archive to succeed even with referencing expenses, got %v", err)
 	}
-	if !apperr.IsKind(err, apperr.Validation) {
-		t.Fatalf("expected validation error kind, got %v", err)
+	if len(expRepo.reassignCalls) != 0 {
+		t.Fatalf("expected no reassignment without an explicit reassign_to, got %v", expRepo.reassignCalls)
 	}
 }
 
@@ -261,7 +252,7 @@ func TestCreate_ColorValidation(t *testing.T) {
 	}
 }
 
-func TestUpdate_ArchiveBlockedWhenIncomeReferences(t *testing.T) {
+func TestUpdate_ArchiveSucceedsEvenWhenIncomeReferences(t *testing.T) {
 	catRepo := newFakeCategoryRepo()
 	incRepo := newFakeIncomeRepo()
 	svc := NewService(catRepo, newFakeExpenseRepo(), incRepo)
@@ -270,12 +261,11 @@ func TestUpdate_ArchiveBlockedWhenIncomeReferences(t *testing.T) {
 	cat := mustCreateCategory(t, svc, "Salary", "income")
 	incRepo.countByCat[cat.ID] = 2
 
-	err := svc.Update(ctx, testUID, cat.ID, UpdateInput{Archived: ptr.Bool(true)})
-	if err == nil {
-		t.Fatalf("expected archive to be blocked when income entries reference the category")
+	if err := svc.Update(ctx, testUID, cat.ID, UpdateInput{Archived: ptr.Bool(true)}); err != nil {
+		t.Fatalf("expected archive to succeed even with referencing income entries, got %v", err)
 	}
-	if !apperr.IsKind(err, apperr.Validation) {
-		t.Fatalf("expected validation error kind, got %v", err)
+	if len(incRepo.reassignCalls) != 0 {
+		t.Fatalf("expected no reassignment without an explicit reassign_to, got %v", incRepo.reassignCalls)
 	}
 }
 

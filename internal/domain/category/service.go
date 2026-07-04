@@ -2,7 +2,6 @@ package category
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"time"
 
@@ -58,9 +57,11 @@ type UpdateInput struct {
 	Icon     *string
 	Archived *bool
 
-	// ReassignTo, if set alongside Archived=true, moves any expenses
-	// referencing this category to ReassignTo before archiving instead of
-	// blocking the archive.
+	// ReassignTo, if set alongside Archived=true, moves any expenses/income
+	// referencing this category to ReassignTo before archiving. Archiving
+	// never blocks on its own — existing records keep resolving by ID
+	// against the (now-archived) category regardless; ReassignTo is purely
+	// an opt-in way to consolidate them elsewhere.
 	ReassignTo *common.CategoryID
 }
 
@@ -206,74 +207,49 @@ func (s *service) Update(
 	return nil
 }
 
-// prepareArchive blocks archiving a category that still has entities
-// pointing at it, unless reassignTo is given — in which case those
-// entities are moved to reassignTo first. Which entity (expense or income)
-// is checked depends on the category's own Type — an expense-type category
-// is guarded against expenses, an income-type category against income.
+// prepareArchive never blocks archiving — a category can always be
+// archived regardless of how many expenses/income entries still reference
+// it, since those references resolve fine by ID against an archived
+// category (it isn't deleted, just hidden from pickers for new entries).
+// reassignTo, if given, is purely opt-in: it bulk-moves existing
+// expenses/income from categoryID to reassignTo before archiving, for
+// when the user actively wants to consolidate rather than just declutter.
 func (s *service) prepareArchive(
 	ctx context.Context,
 	userID common.UserID,
 	categoryID common.CategoryID,
 	reassignTo *common.CategoryID,
 ) error {
+	if reassignTo == nil {
+		return nil
+	}
+
+	if *reassignTo == categoryID {
+		return apperr.ValidationErr("cannot reassign a category's entries to itself")
+	}
+
 	cat, err := s.repo.GetByID(ctx, userID, categoryID)
 	if err != nil {
 		return apperr.InternalErr("failed to load category", err)
 	}
 
-	if reassignTo != nil {
-		if *reassignTo == categoryID {
-			return apperr.ValidationErr("cannot reassign a category's entries to itself")
-		}
-
-		ok, err := s.repo.ExistsForUserWithType(ctx, userID, *reassignTo, cat.Type)
-		if err != nil {
-			return apperr.InternalErr("failed to validate reassign target category", err)
-		}
-		if !ok {
-			return apperr.ValidationErr("invalid reassign_to category — it must be an existing, non-archived category of the same type")
-		}
+	ok, err := s.repo.ExistsForUserWithType(ctx, userID, *reassignTo, cat.Type)
+	if err != nil {
+		return apperr.InternalErr("failed to validate reassign target category", err)
+	}
+	if !ok {
+		return apperr.ValidationErr("invalid reassign_to category — it must be an existing, non-archived category of the same type")
 	}
 
 	if cat.Type == "income" {
-		if reassignTo != nil {
-			if _, err := s.income.ReassignCategory(ctx, userID, categoryID, *reassignTo); err != nil {
-				return apperr.InternalErr("failed to reassign income", err)
-			}
-			return nil
-		}
-
-		count, err := s.income.CountByCategory(ctx, userID, categoryID)
-		if err != nil {
-			return apperr.InternalErr("failed to check category usage", err)
-		}
-		if count > 0 {
-			return apperr.ValidationErr(fmt.Sprintf(
-				"cannot archive: %d income record(s) still reference this category; pass reassign_to to move them first",
-				count,
-			))
+		if _, err := s.income.ReassignCategory(ctx, userID, categoryID, *reassignTo); err != nil {
+			return apperr.InternalErr("failed to reassign income", err)
 		}
 		return nil
 	}
 
-	if reassignTo != nil {
-		if _, err := s.expenses.ReassignCategory(ctx, userID, categoryID, *reassignTo); err != nil {
-			return apperr.InternalErr("failed to reassign expenses", err)
-		}
-		return nil
+	if _, err := s.expenses.ReassignCategory(ctx, userID, categoryID, *reassignTo); err != nil {
+		return apperr.InternalErr("failed to reassign expenses", err)
 	}
-
-	count, err := s.expenses.CountByCategory(ctx, userID, categoryID)
-	if err != nil {
-		return apperr.InternalErr("failed to check category usage", err)
-	}
-	if count > 0 {
-		return apperr.ValidationErr(fmt.Sprintf(
-			"cannot archive: %d expense(s) still reference this category; pass reassign_to to move them first",
-			count,
-		))
-	}
-
 	return nil
 }

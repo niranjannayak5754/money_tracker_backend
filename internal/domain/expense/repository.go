@@ -29,12 +29,6 @@ type Repository interface {
 		id common.ExpenseID,
 	) (bool, error)
 
-	CountByCategory(
-		ctx context.Context,
-		userID common.UserID,
-		categoryID common.CategoryID,
-	) (int64, error)
-
 	ReassignCategory(
 		ctx context.Context,
 		userID common.UserID,

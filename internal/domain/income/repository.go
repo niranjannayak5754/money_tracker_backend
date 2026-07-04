@@ -26,14 +26,8 @@ type Repository interface {
 		id common.IncomeID,
 	) (bool, error)
 
-	// CountByCategory and ReassignCategory mirror expense's — used to keep
-	// category archiving safe for income-type categories.
-	CountByCategory(
-		ctx context.Context,
-		userID common.UserID,
-		categoryID common.CategoryID,
-	) (int64, error)
-
+	// ReassignCategory mirrors expense's — used for the opt-in
+	// "reassign to another category" step of archiving.
 	ReassignCategory(
 		ctx context.Context,
 		userID common.UserID,

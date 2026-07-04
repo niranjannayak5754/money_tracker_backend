@@ -330,41 +330,6 @@ func (m *mongoRepo) Delete(
 	return res.MatchedCount > 0, nil
 }
 
-// CountByCategory counts a user's non-deleted expenses referencing a
-// category — used to guard category archiving.
-func (m *mongoRepo) CountByCategory(
-	ctx context.Context,
-	userID common.UserID,
-	categoryID common.CategoryID,
-) (int64, error) {
-	uid, err := mongohelper.ObjectIDFromHex(string(userID))
-	if err != nil {
-		return 0, err
-	}
-	cid, err := mongohelper.ObjectIDFromHex(string(categoryID))
-	if err != nil {
-		return 0, err
-	}
-
-	count, err := m.col.CountDocuments(ctx, bson.M{
-		"user_id":     uid,
-		"category_id": cid,
-		"deleted_at":  bson.M{"$exists": false},
-	})
-	if err != nil {
-		m.logger.Error(
-			"mongo count by category failed",
-			"request_id", requestctx.RequestID(ctx),
-			"uid", userID,
-			"category_id", categoryID,
-			"err", err,
-		)
-		return 0, err
-	}
-
-	return count, nil
-}
-
 // ReassignCategory bulk-moves a user's non-deleted expenses from one
 // category to another — used when archiving a category with reassignment.
 func (m *mongoRepo) ReassignCategory(

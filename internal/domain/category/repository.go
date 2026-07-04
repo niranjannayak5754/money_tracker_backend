@@ -46,16 +46,9 @@ type Repository interface {
 	) (bool, error)
 }
 
-// ExpenseRepository is a narrow cross-domain dependency used only to keep
-// category archiving safe (block/redirect archiving a category that still
-// has expenses pointing at it).
+// ExpenseRepository is a narrow cross-domain dependency used only for the
+// opt-in "reassign to another category" step of archiving.
 type ExpenseRepository interface {
-	CountByCategory(
-		ctx context.Context,
-		userID common.UserID,
-		categoryID common.CategoryID,
-	) (int64, error)
-
 	ReassignCategory(
 		ctx context.Context,
 		userID common.UserID,
@@ -63,17 +56,8 @@ type ExpenseRepository interface {
 	) (int64, error)
 }
 
-// IncomeRepository mirrors ExpenseRepository — a narrow cross-domain
-// dependency so archiving an income-type category can block/redirect
-// income entries that still reference it, the same way expense-type
-// categories are guarded against expenses.
+// IncomeRepository mirrors ExpenseRepository, for income-type categories.
 type IncomeRepository interface {
-	CountByCategory(
-		ctx context.Context,
-		userID common.UserID,
-		categoryID common.CategoryID,
-	) (int64, error)
-
 	ReassignCategory(
 		ctx context.Context,
 		userID common.UserID,
