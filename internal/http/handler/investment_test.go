@@ -37,6 +37,12 @@ func (f *fakeInvestmentService) Delete(ctx context.Context, userID common.UserID
 func (f *fakeInvestmentService) ListTypes(ctx context.Context) ([]investment.TypeDoc, error) {
 	return nil, nil
 }
+func (f *fakeInvestmentService) GetXIRR(ctx context.Context, userID common.UserID, id common.InvestmentID) (float64, error) {
+	return 0, nil
+}
+func (f *fakeInvestmentService) GetPortfolioXIRR(ctx context.Context, userID common.UserID) (float64, error) {
+	return 0, nil
+}
 
 // Regression: PUT /investment/{id} decoded Date as a plain *time.Time,
 // which requires RFC3339 and rejects date-only strings that Create accepts

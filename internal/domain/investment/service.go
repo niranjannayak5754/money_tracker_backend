@@ -19,6 +19,13 @@ type Service interface {
 	Close(ctx context.Context, userID common.UserID, id common.InvestmentID, in CloseInput) (Model, error)
 	Delete(ctx context.Context, userID common.UserID, id common.InvestmentID) error
 	ListTypes(ctx context.Context) ([]TypeDoc, error)
+
+	// GetXIRR computes a single investment's annualized return.
+	GetXIRR(ctx context.Context, userID common.UserID, id common.InvestmentID) (float64, error)
+
+	// GetPortfolioXIRR computes a blended annualized return across all of
+	// a user's investments.
+	GetPortfolioXIRR(ctx context.Context, userID common.UserID) (float64, error)
 }
 
 type service struct {
@@ -267,4 +274,64 @@ func (s *service) Delete(ctx context.Context, userID common.UserID, id common.In
 		return apperr.NotFoundErr("investment not found")
 	}
 	return nil
+}
+
+// cashFlows builds a simplified 2-point cash-flow pair for an investment:
+// the original invested amount as an outflow at its creation date, and its
+// current total value (still-held remaining basis plus everything already
+// withdrawn) as an inflow as of asOf.
+//
+// Known limitation: there's no dated ledger of individual withdrawal
+// events, only running totals (Amount/RetrievedAmount/RealizedPnl), so
+// multiple partial withdrawals at different real dates are all folded into
+// one terminal cash flow on asOf. This understates the true XIRR when
+// significant withdrawals happened well before asOf, since it assumes the
+// withdrawn money stayed invested longer than it actually did.
+func cashFlows(inv Model, asOf time.Time) []shared.CashFlow {
+	originalInvested := inv.Amount + inv.RetrievedAmount - inv.RealizedPnl
+	currentValue := inv.Amount + inv.RetrievedAmount
+
+	return []shared.CashFlow{
+		{Date: inv.Date, Amount: -originalInvested},
+		{Date: asOf, Amount: currentValue},
+	}
+}
+
+func (s *service) GetXIRR(ctx context.Context, userID common.UserID, id common.InvestmentID) (float64, error) {
+	inv, err := s.repo.GetByID(ctx, userID, id)
+	if err != nil {
+		if repository.DataNotFoundErr(err) {
+			return 0, apperr.NotFoundErr("investment not found")
+		}
+		return 0, apperr.InternalErr("failed to load investment", err)
+	}
+
+	rate, err := shared.XIRR(cashFlows(*inv, time.Now().UTC()))
+	if err != nil {
+		return 0, apperr.ValidationErr("unable to compute XIRR for this investment: " + err.Error())
+	}
+	return rate, nil
+}
+
+func (s *service) GetPortfolioXIRR(ctx context.Context, userID common.UserID) (float64, error) {
+	items, err := s.repo.ListByMonth(ctx, userID, time.Time{}, time.Time{})
+	if err != nil {
+		return 0, apperr.InternalErr("failed to load investments", err)
+	}
+
+	now := time.Now().UTC()
+	var flows []shared.CashFlow
+	for _, inv := range items {
+		flows = append(flows, cashFlows(inv, now)...)
+	}
+
+	if len(flows) < 2 {
+		return 0, apperr.ValidationErr("not enough investment activity to compute a portfolio return")
+	}
+
+	rate, err := shared.XIRR(flows)
+	if err != nil {
+		return 0, apperr.ValidationErr("unable to compute portfolio XIRR: " + err.Error())
+	}
+	return rate, nil
 }

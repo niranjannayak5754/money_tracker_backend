@@ -47,6 +47,7 @@ func RegisterRoutesV2(r chi.Router, c *Container) {
 		priv.Mount("/goals", c.GoalH.Routes())
 		priv.Get("/summary", c.SummaryH.Get)
 		priv.Get("/summary/compare", c.SummaryH.Compare)
+		priv.Get("/summary/networth-history", c.SummaryH.NetWorthHistory)
 	})
 
 }

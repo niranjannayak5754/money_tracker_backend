@@ -277,3 +277,91 @@ func TestClose_AlreadyClosed_Rejected(t *testing.T) {
 		t.Fatalf("expected error when closing an already-closed investment")
 	}
 }
+
+func mustCreateInvestmentWithDate(t *testing.T, svc Service, amount float64, date time.Time) Model {
+	t.Helper()
+	m, err := svc.Create(context.Background(), testUID, CreateInput{
+		Type:   "fixed_deposit",
+		Amount: amount,
+		Date:   date,
+	})
+	if err != nil {
+		t.Fatalf("create investment failed: %v", err)
+	}
+	return m
+}
+
+func TestGetXIRR_PositiveReturnAfterClose(t *testing.T) {
+	repo := newFakeInvestmentRepo()
+	svc := NewService(repo)
+	ctx := context.Background()
+
+	oneYearAgo := time.Now().UTC().AddDate(-1, 0, 0)
+	inv := mustCreateInvestmentWithDate(t, svc, 10000, oneYearAgo)
+
+	if _, err := svc.Close(ctx, testUID, inv.ID, CloseInput{
+		WithdrawnAmount:   11000,
+		CostBasisConsumed: 10000,
+		Date:              time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("close failed: %v", err)
+	}
+
+	rate, err := svc.GetXIRR(ctx, testUID, inv.ID)
+	if err != nil {
+		t.Fatalf("get xirr failed: %v", err)
+	}
+	if rate < 0.08 || rate > 0.12 {
+		t.Fatalf("expected xirr close to 10%% for a ~1-year 10%% gain, got %v", rate)
+	}
+}
+
+func TestGetXIRR_InvestmentNotFound(t *testing.T) {
+	repo := newFakeInvestmentRepo()
+	svc := NewService(repo)
+
+	_, err := svc.GetXIRR(context.Background(), testUID, "nonexistent")
+	if err == nil {
+		t.Fatalf("expected not found error")
+	}
+	if !apperr.IsKind(err, apperr.NotFound) {
+		t.Fatalf("expected NotFound error kind, got %v", err)
+	}
+}
+
+func TestGetPortfolioXIRR_BlendsMultipleInvestments(t *testing.T) {
+	repo := newFakeInvestmentRepo()
+	svc := NewService(repo)
+	ctx := context.Background()
+
+	oneYearAgo := time.Now().UTC().AddDate(-1, 0, 0)
+	inv1 := mustCreateInvestmentWithDate(t, svc, 10000, oneYearAgo)
+	inv2 := mustCreateInvestmentWithDate(t, svc, 5000, oneYearAgo)
+
+	if _, err := svc.Close(ctx, testUID, inv1.ID, CloseInput{WithdrawnAmount: 11000, CostBasisConsumed: 10000, Date: time.Now().UTC()}); err != nil {
+		t.Fatalf("close inv1 failed: %v", err)
+	}
+	if _, err := svc.Close(ctx, testUID, inv2.ID, CloseInput{WithdrawnAmount: 5500, CostBasisConsumed: 5000, Date: time.Now().UTC()}); err != nil {
+		t.Fatalf("close inv2 failed: %v", err)
+	}
+
+	rate, err := svc.GetPortfolioXIRR(ctx, testUID)
+	if err != nil {
+		t.Fatalf("get portfolio xirr failed: %v", err)
+	}
+	// Both investments returned ~10% over the same ~1-year span, so the
+	// blended portfolio rate should also land close to 10%.
+	if rate < 0.08 || rate > 0.12 {
+		t.Fatalf("expected blended portfolio xirr close to 10%%, got %v", rate)
+	}
+}
+
+func TestGetPortfolioXIRR_NoInvestments_ReturnsError(t *testing.T) {
+	repo := newFakeInvestmentRepo()
+	svc := NewService(repo)
+
+	_, err := svc.GetPortfolioXIRR(context.Background(), testUID)
+	if err == nil {
+		t.Fatalf("expected error when there are no investments to compute a portfolio return from")
+	}
+}

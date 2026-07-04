@@ -14,6 +14,10 @@ import (
 type Service interface {
 	Get(ctx context.Context, userID common.UserID, month string) (Result, error)
 	Compare(ctx context.Context, userID common.UserID, months int) ([]MonthlyComparison, error)
+
+	// NetWorthHistory returns a per-month balance-sheet breakdown. See
+	// NetWorthPoint's doc comment for the v1 cash-ledger limitation.
+	NetWorthHistory(ctx context.Context, userID common.UserID, months int) ([]NetWorthPoint, error)
 }
 
 type service struct {
@@ -211,6 +215,56 @@ func (s *service) Compare(
 			NetWorth:      netWorth,
 			BudgetStatus:  budgetStatus,
 			OverallBudget: overallBudget,
+		})
+	}
+
+	return out, nil
+}
+
+// NetWorthHistory reconstructs a per-month balance-sheet breakdown.
+// Investments/RealizedPnl/Debt are filtered by each record's own date
+// (investment.Date / debt.StartDate) against the end of each historical
+// month, so records that didn't exist yet are correctly excluded — an
+// improvement over Compare's NetWorth, which repeats today's totals for
+// every month. The remaining gap: since there's no dated ledger of
+// individual withdrawal/payment events, included records still contribute
+// their CURRENT running totals rather than what they actually were as of
+// that past month. Cash has no ledger at all in v1, so it always uses the
+// current balance.
+func (s *service) NetWorthHistory(ctx context.Context, userID common.UserID, months int) ([]NetWorthPoint, error) {
+	if months > config.TWELVE {
+		return nil, apperr.ValidationErr("months cannot be greater than 12")
+	}
+
+	cash, err := s.repo.BankBalanceTotal(ctx, userID)
+	if err != nil {
+		return nil, apperr.InternalErr("failed to calculate bank balance total", err)
+	}
+
+	now := time.Now().UTC()
+	out := make([]NetWorthPoint, 0, months)
+
+	for i := months - 1; i >= 0; i-- {
+		t := now.AddDate(0, -i, 0)
+		monthEnd := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+
+		investAmount, realizedPnl, err := s.repo.InvestmentSnapshotAsOf(ctx, userID, monthEnd)
+		if err != nil {
+			return nil, apperr.InternalErr("failed to calculate investment snapshot", err)
+		}
+
+		debt, err := s.repo.DebtSnapshotAsOf(ctx, userID, monthEnd)
+		if err != nil {
+			return nil, apperr.InternalErr("failed to calculate debt snapshot", err)
+		}
+
+		out = append(out, NetWorthPoint{
+			Month:       t.Format(config.STANDARD_YEAR_MONTH),
+			Cash:        cash,
+			Investments: investAmount,
+			RealizedPnl: realizedPnl,
+			Debt:        debt,
+			NetWorth:    cash + investAmount + realizedPnl - debt,
 		})
 	}
 

@@ -28,10 +28,12 @@ func NewInvestmentHandler(svc investment.Service, logger *slog.Logger) *Investme
 func (h *InvestmentHandler) Routes() http.Handler {
 	r := chi.NewRouter()
 	r.Get("/types", h.types)
+	r.Get("/xirr", h.portfolioXIRR)
 	r.Get("/", h.list)
 	r.Post("/", h.create)
 	r.Put("/{id}", h.update)
 	r.Post("/{id}/close", h.close)
+	r.Get("/{id}/xirr", h.xirr)
 	r.Delete("/{id}", h.delete)
 	return r
 }
@@ -182,6 +184,39 @@ func (h *InvestmentHandler) close(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, rec)
+}
+
+func (h *InvestmentHandler) xirr(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
+
+	invID := common.InvestmentID(chi.URLParam(r, "id"))
+	rate, err := h.svc.GetXIRR(r.Context(), uid, invID)
+	if err != nil {
+		h.logger.Error("investment.xirr failed", "request_id", requestctx.RequestID(r.Context()), "uid", uid, "investment_id", invID, "err", err)
+		response.WriteError(w, r, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]float64{"xirr": rate})
+}
+
+func (h *InvestmentHandler) portfolioXIRR(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
+
+	rate, err := h.svc.GetPortfolioXIRR(r.Context(), uid)
+	if err != nil {
+		h.logger.Error("investment.portfolio_xirr failed", "request_id", requestctx.RequestID(r.Context()), "uid", uid, "err", err)
+		response.WriteError(w, r, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]float64{"xirr": rate})
 }
 
 func (h *InvestmentHandler) delete(w http.ResponseWriter, r *http.Request) {
