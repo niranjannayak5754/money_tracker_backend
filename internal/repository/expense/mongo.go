@@ -245,8 +245,9 @@ func (m *mongoRepo) Update(
 	res, err := m.col.UpdateOne(
 		ctx,
 		bson.M{
-			"_id":     eid,
-			"user_id": uid,
+			"_id":        eid,
+			"user_id":    uid,
+			"deleted_at": bson.M{"$exists": false},
 		},
 		bson.M{
 			"$set": converted,

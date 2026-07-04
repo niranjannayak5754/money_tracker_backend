@@ -14,11 +14,13 @@ import (
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/http/requestctx"
 	mongohelper "github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
+	auditrepo "github.com/niranjannayak5754/money_tracker_backend/internal/repository/audit"
 )
 
 type MongoRepo struct {
 	col    *mongo.Collection
 	logger *slog.Logger
+	audit  *auditrepo.AuditRepo
 }
 
 func New(
@@ -28,6 +30,7 @@ func New(
 	return &MongoRepo{
 		col:    db.Collection("categories"),
 		logger: logger.With("repo", "category"),
+		audit:  auditrepo.New(db, logger),
 	}
 }
 
@@ -70,6 +73,17 @@ func (m *MongoRepo) Create(
 		)
 		return err
 	}
+
+	_ = m.audit.Write(ctx, auditrepo.Entry{
+		Action:   "create",
+		Entity:   "category",
+		EntityID: doc.ID.Hex(),
+		Payload: bson.M{
+			"user_id": doc.UserID.Hex(),
+			"name":    doc.Name,
+			"type":    doc.Type,
+		},
+	})
 
 	return nil
 }
@@ -175,6 +189,15 @@ func (m *MongoRepo) Update(
 			"err", err,
 		)
 		return false, err
+	}
+
+	if res.MatchedCount > 0 {
+		_ = m.audit.Write(ctx, auditrepo.Entry{
+			Action:   "update",
+			Entity:   "category",
+			EntityID: string(id),
+			Payload:  bson.M{"set": set},
+		})
 	}
 
 	return res.MatchedCount > 0, nil

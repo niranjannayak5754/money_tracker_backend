@@ -133,7 +133,6 @@ func (m *MongoRepo) ExpenseTotals(
 	}
 	defer cur.Close(ctx)
 
-	var total float64
 	var cats []summary.CategoryBreakdown
 
 	for cur.Next(ctx) {
@@ -155,14 +154,52 @@ func (m *MongoRepo) ExpenseTotals(
 			return 0, nil, err
 		}
 
-		f := shared.Decimal128ToFloat(x.Total)
-		total += f
-
 		cats = append(cats, summary.CategoryBreakdown{
 			CategoryID:   x.CatID.Hex(),
 			CategoryName: x.Cat.Name,
-			Total:        f,
+			Total:        shared.Decimal128ToFloat(x.Total),
 		})
+	}
+
+	if err := cur.Err(); err != nil {
+		return 0, nil, err
+	}
+
+	// Grand total computed by Mongo ($sum over Decimal128), not by summing
+	// already-rounded per-category floats in Go — avoids float drift.
+	totalCur, err := m.expensesCol.Aggregate(ctx, bson.A{
+		bson.D{{Key: "$match", Value: match}},
+		bson.D{{Key: "$group", Value: bson.M{
+			"_id":   nil,
+			"total": bson.M{"$sum": "$amount"},
+		}}},
+	})
+	if err != nil {
+		m.logger.Error(
+			"mongo aggregate expense total failed",
+			"request_id", requestctx.RequestID(ctx),
+			"uid", userID,
+			"err", err,
+		)
+		return 0, nil, err
+	}
+	defer totalCur.Close(ctx)
+
+	var total float64
+	var out struct {
+		Total primitive.Decimal128 `bson:"total"`
+	}
+	if totalCur.Next(ctx) {
+		if err := totalCur.Decode(&out); err != nil {
+			m.logger.Error(
+				"mongo decode expense total failed",
+				"request_id", requestctx.RequestID(ctx),
+				"uid", userID,
+				"err", err,
+			)
+			return 0, nil, err
+		}
+		total = shared.Decimal128ToFloat(out.Total)
 	}
 
 	return total, cats, nil

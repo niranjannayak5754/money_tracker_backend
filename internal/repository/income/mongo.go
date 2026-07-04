@@ -173,10 +173,27 @@ func (m *MongoRepo) Update(
 		return false, err
 	}
 
+	converted := bson.M{}
+	for k, v := range set {
+		if k == "amount" {
+			f, ok := v.(float64)
+			if !ok {
+				return false, fmt.Errorf("amount must be a float64")
+			}
+			dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", f))
+			if err != nil {
+				return false, err
+			}
+			converted["amount"] = dec
+			continue
+		}
+		converted[k] = v
+	}
+
 	res, err := m.col.UpdateOne(
 		ctx,
-		bson.M{"_id": incomeId, "user_id": uid},
-		bson.M{"$set": set},
+		bson.M{"_id": incomeId, "user_id": uid, "deleted_at": bson.M{"$exists": false}},
+		bson.M{"$set": converted},
 	)
 
 	if err != nil {

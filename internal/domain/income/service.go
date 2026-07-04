@@ -2,7 +2,6 @@ package income
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
@@ -49,10 +48,6 @@ func (s *service) Create(
 		return Model{}, apperr.ValidationErr("amount must be greater than zero")
 	}
 
-	if in.Amount <= 0 {
-		return Model{}, apperr.ValidationErr("amount must be greater than zero")
-	}
-
 	now := time.Now().UTC()
 
 	rec := Model{
@@ -70,7 +65,6 @@ func (s *service) Create(
 		return Model{}, apperr.InternalErr("failed to create income", err)
 	}
 
-	_ = fmt.Sprintf("%.2f", in.Amount)
 	return rec, nil
 }
 
@@ -80,7 +74,10 @@ func (s *service) List(
 	month string,
 ) ([]Model, error) {
 
-	start, end := shared.MonthRange(month)
+	start, end, err := shared.MonthRange(month)
+	if err != nil {
+		return nil, err
+	}
 
 	items, err := s.repo.ListByMonth(ctx, userID, start, end)
 	if err != nil {

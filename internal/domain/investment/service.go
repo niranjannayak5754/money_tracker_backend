@@ -77,7 +77,10 @@ func (s *service) Create(ctx context.Context, userID common.UserID, in CreateInp
 }
 
 func (s *service) List(ctx context.Context, userID common.UserID, month string) ([]Model, error) {
-	start, end := shared.MonthRange(month)
+	start, end, err := shared.MonthRange(month)
+	if err != nil {
+		return nil, err
+	}
 
 	items, err := s.repo.ListByMonth(ctx, userID, start, end)
 	if err != nil {

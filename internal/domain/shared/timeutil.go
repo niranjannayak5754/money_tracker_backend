@@ -66,20 +66,14 @@ func MonthBounds(month string) (time.Time, time.Time, error) {
 
 // MonthRange is a helper for domain services.
 // If month is empty, it returns zero start/end to indicate a lifetime (no date filters).
-// If month is invalid, it falls back to the current month's start/end.
-func MonthRange(month string) (time.Time, time.Time) {
+// If month is invalid, it returns an error rather than silently falling back
+// to the current month.
+func MonthRange(month string) (time.Time, time.Time, error) {
 	if month == "" {
-		return time.Time{}, time.Time{}
+		return time.Time{}, time.Time{}, nil
 	}
 
-	start, end, err := MonthBounds(month)
-	if err != nil {
-		now := time.Now().UTC()
-		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-		end = start.AddDate(0, 1, 0)
-	}
-
-	return start, end
+	return MonthBounds(month)
 }
 
 // ChooseDate normalizes zero time values to now.

@@ -199,7 +199,28 @@ func (m *MongoRepo) Update(ctx context.Context, userId common.UserID, id common.
 		return false, err
 	}
 
-	res, err := m.col.UpdateOne(ctx, bson.M{"_id": invId, "user_id": uid}, bson.M{"$set": set})
+	converted := bson.M{}
+	for k, v := range set {
+		if k == "amount" {
+			f, ok := v.(float64)
+			if !ok {
+				return false, fmt.Errorf("amount must be a float64")
+			}
+			dec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", f))
+			if err != nil {
+				return false, err
+			}
+			converted["amount"] = dec
+			continue
+		}
+		converted[k] = v
+	}
+
+	res, err := m.col.UpdateOne(
+		ctx,
+		bson.M{"_id": invId, "user_id": uid, "deleted_at": bson.M{"$exists": false}},
+		bson.M{"$set": converted},
+	)
 	if err != nil {
 		m.logger.Error("mongo update failed", "request_id", requestctx.RequestID(ctx), "uid", userId, "investment_id", id, "err", err)
 		return false, err

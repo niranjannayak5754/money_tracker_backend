@@ -95,7 +95,10 @@ func (s *service) List(
 	month, category string,
 ) ([]Model, error) {
 
-	start, end := shared.MonthRange(month)
+	start, end, err := shared.MonthRange(month)
+	if err != nil {
+		return nil, err
+	}
 
 	var catID *common.CategoryID
 	if category != "" {

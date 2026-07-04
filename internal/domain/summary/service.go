@@ -29,7 +29,10 @@ func (s *service) Get(
 	month string,
 ) (Result, error) {
 
-	start, end := shared.MonthRange(month)
+	start, end, err := shared.MonthRange(month)
+	if err != nil {
+		return Result{}, err
+	}
 
 	incomeTotal, err := s.repo.IncomeTotal(ctx, userID, start, end)
 	if err != nil {
