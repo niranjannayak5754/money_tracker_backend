@@ -1,12 +1,14 @@
 openapi: 3.0.3
 info:
-  title: Money Tracker API
+  title: Expense Tracker API
   description: >
-    Personal finance tracker backend: categories, income, expenses, investments
-    (with close/withdraw and XIRR), cash/bank accounts, debts/loans, recurring
-    transactions, budgets, savings goals, net worth (current + history), and
-    in-app-only notifications (no email/push/SMS).
-  version: "2.0.0"
+    Focused expense-tracker backend: categories, expenses, recurring expense
+    templates, budgets (per-category and overall), savings accounts (with
+    add/withdraw), savings goals, monthly summaries, and in-app-only
+    notifications (no email/push/SMS). This branch does not track income,
+    investments, debt, or net worth — see the `release`/`main` branches for
+    the full money tracker.
+  version: "3.0.0"
 
 servers:
   - url: /
@@ -19,27 +21,21 @@ tags:
   - name: profile
     description: Profile-related endpoints for the authenticated user
   - name: category
-    description: Category management (income/expense categories)
-  - name: income
-    description: Income entries
+    description: Expense category management
   - name: expenses
     description: Expense entries
-  - name: investment
-    description: Investments — create/update/close/withdraw, types, XIRR
   - name: bank-accounts
-    description: Cash / bank account balances
-  - name: debts
-    description: Debt / loan tracking and payments
+    description: Savings accounts — balances, and add/withdraw
   - name: recurring
-    description: Recurring transaction templates
+    description: Recurring expense templates
   - name: budgets
     description: Per-category and overall spend budgets
   - name: goals
-    description: Savings goals linked to a bank account or investment
+    description: Savings goals linked to a savings account
   - name: notifications
     description: In-app notifications (no email/push/SMS)
   - name: summary
-    description: Reporting, net worth, and summaries
+    description: Monthly expense reporting and savings balance
 
 components:
   securitySchemes:
@@ -130,7 +126,7 @@ components:
         id: { type: string }
         user_id: { type: string }
         name: { type: string }
-        type: { type: string, enum: [expense, income] }
+        type: { type: string, enum: [expense] }
         color: { type: string, example: "#FF5733" }
         icon: { type: string, example: "🛒" }
         archived: { type: boolean }
@@ -140,7 +136,7 @@ components:
       required: [name]
       properties:
         name: { type: string }
-        type: { type: string, enum: [expense, income], default: expense }
+        type: { type: string, enum: [expense], default: expense }
         color: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
         icon: { type: string }
     CategoryUpdateRequest:
@@ -157,34 +153,6 @@ components:
         reassign_to:
           type: string
           description: Category ID to bulk-move referencing expenses to before archiving.
-
-    # ---- income ----
-    Income:
-      type: object
-      properties:
-        id: { type: string }
-        user_id: { type: string }
-        amount: { type: number }
-        date: { type: string, format: date-time }
-        source: { type: string }
-        notes: { type: string }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-    IncomeCreateRequest:
-      type: object
-      required: [amount]
-      properties:
-        amount: { type: number }
-        date: { type: string, format: date-time }
-        source: { type: string }
-        notes: { type: string }
-    IncomeUpdateRequest:
-      type: object
-      properties:
-        amount: { type: number }
-        date: { type: string, format: date-time }
-        source: { type: string }
-        notes: { type: string }
 
     # ---- expenses ----
     Expense:
@@ -226,86 +194,7 @@ components:
           type: array
           items: { type: string }
 
-    # ---- investment ----
-    InvestmentType:
-      type: object
-      properties:
-        id: { type: string }
-        key: { type: string, example: fixed_deposit }
-        name: { type: string, example: "Fixed Deposit (FD)" }
-        active: { type: boolean }
-        created_at: { type: string, format: date-time }
-    Investment:
-      type: object
-      properties:
-        id: { type: string }
-        user_id: { type: string }
-        type: { type: string, description: "The investment_type key" }
-        display_type: { type: string }
-        instrument: { type: string }
-        amount:
-          type: number
-          description: Remaining cost basis still held.
-        status: { type: string, enum: [ACTIVE, PARTIALLY_RETRIEVED, CLOSED] }
-        retrieved_amount:
-          type: number
-          description: Cumulative amount withdrawn across all closes.
-        realized_pnl:
-          type: number
-          description: Cumulative realized gain/loss across all closes.
-        date: { type: string, format: date-time }
-        maturity_date: { type: string, format: date-time, nullable: true }
-        notes: { type: string }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-    InvestmentCreateRequest:
-      type: object
-      required: [type, amount]
-      properties:
-        type: { type: string, description: "Must be an active key from GET /investment/types" }
-        instrument: { type: string }
-        amount: { type: number }
-        date: { type: string, format: date-time }
-        maturity_date: { type: string, format: date-time }
-        notes: { type: string }
-    InvestmentUpdateRequest:
-      type: object
-      properties:
-        type: { type: string }
-        instrument: { type: string }
-        amount: { type: number }
-        date: { type: string, format: date-time }
-        maturity_date: { type: string, format: date-time }
-        notes: { type: string }
-    InvestmentCloseRequest:
-      type: object
-      required: [withdrawn_amount, cost_basis_consumed]
-      properties:
-        withdrawn_amount:
-          type: number
-          description: Total amount received back from this withdrawal.
-        cost_basis_consumed:
-          type: number
-          description: >
-            However much of the original invested amount this withdrawal
-            represents. The backend has no market pricing, so this must be
-            supplied explicitly — it cannot exceed the investment's current
-            remaining amount.
-        date: { type: string, format: date-time }
-        notes: { type: string }
-    XIRRResponse:
-      type: object
-      properties:
-        xirr:
-          type: number
-          description: >
-            Annualized return as a decimal (e.g. 0.0997 for ~10%). Computed as
-            a simplified 2-point cash flow (original investment date → today),
-            since there is no dated ledger of individual withdrawal events —
-            this understates the true return when significant withdrawals
-            happened well before today.
-
-    # ---- bank accounts ----
+    # ---- bank accounts (savings accounts) ----
     BankAccount:
       type: object
       properties:
@@ -314,7 +203,9 @@ components:
         name: { type: string }
         balance:
           type: number
-          description: Manually entered/updated — no transaction-linked ledger.
+          description: >
+            Moved via POST /bank-accounts/{id}/adjust (add/withdraw), or
+            edited directly here for one-off reconciliation.
         interest_rate: { type: number, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -331,55 +222,15 @@ components:
         name: { type: string }
         balance: { type: number, minimum: 0 }
         interest_rate: { type: number }
-
-    # ---- debts ----
-    Debt:
+    BankAccountAdjustRequest:
       type: object
+      required: [direction, amount]
       properties:
-        id: { type: string }
-        user_id: { type: string }
-        name: { type: string }
-        principal: { type: number }
-        interest_rate: { type: number }
-        emi_amount: { type: number }
-        tenure_months: { type: integer }
-        start_date: { type: string, format: date-time }
-        outstanding_balance: { type: number }
-        total_interest_paid: { type: number }
-        status: { type: string, enum: [ACTIVE, CLOSED] }
-        notes: { type: string }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-    DebtCreateRequest:
-      type: object
-      required: [name, principal, interest_rate]
-      properties:
-        name: { type: string }
-        principal: { type: number }
-        interest_rate: { type: number }
-        emi_amount: { type: number }
-        tenure_months: { type: integer }
-        start_date: { type: string, format: date-time }
-        notes: { type: string }
-    DebtUpdateRequest:
-      type: object
-      description: principal and start_date are immutable after creation.
-      properties:
-        name: { type: string }
-        interest_rate: { type: number }
-        emi_amount: { type: number }
-        tenure_months: { type: integer }
-        notes: { type: string }
-    DebtPaymentRequest:
-      type: object
-      required: [principal_component, interest_component]
-      properties:
-        principal_component:
-          type: number
-          description: Cannot exceed the debt's current outstanding balance.
-        interest_component: { type: number }
-        date: { type: string, format: date-time }
-        notes: { type: string }
+        direction: { type: string, enum: [add, withdraw] }
+        amount: { type: number, exclusiveMinimum: 0 }
+        note:
+          type: string
+          description: Optional; recorded in the audit log alongside the change.
 
     # ---- recurring ----
     RecurringTemplate:
@@ -387,7 +238,7 @@ components:
       properties:
         id: { type: string }
         user_id: { type: string }
-        entity_type: { type: string, enum: [expense, income, investment] }
+        entity_type: { type: string, enum: [expense] }
         frequency: { type: string, enum: [monthly, yearly] }
         day_of_month:
           type: integer
@@ -397,10 +248,7 @@ components:
             to the 31st in March).
         payload:
           type: object
-          description: >
-            Shape depends on entity_type — expense needs {amount,
-            category_id, merchant?, notes?}; income needs {amount, source?,
-            notes?}; investment needs {amount, type, instrument?, notes?}.
+          description: "{amount, category_id, merchant?, notes?}"
         start_date: { type: string, format: date-time }
         end_date: { type: string, format: date-time, nullable: true }
         next_run_date: { type: string, format: date-time }
@@ -412,7 +260,7 @@ components:
       type: object
       required: [entity_type, frequency, day_of_month, payload, start_date]
       properties:
-        entity_type: { type: string, enum: [expense, income, investment] }
+        entity_type: { type: string, enum: [expense] }
         frequency: { type: string, enum: [monthly, yearly] }
         day_of_month: { type: integer, minimum: 1, maximum: 31 }
         payload: { type: object }
@@ -478,23 +326,20 @@ components:
         name: { type: string }
         target_amount: { type: number }
         target_date: { type: string, format: date-time, nullable: true }
-        linked_type: { type: string, enum: [bank_account, investment] }
+        linked_type: { type: string, enum: [bank_account] }
         linked_id: { type: string }
         status: { type: string, enum: [active, completed, abandoned] }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         current_value:
           type: number
-          description: >
-            Live-resolved from the linked entity at read time — a bank
-            account's balance, or an investment's Amount + RetrievedAmount
-            (total ever contributed, including withdrawn amounts).
+          description: Live-resolved from the linked savings account's current balance at read time.
         percent_complete:
           type: number
           description: Capped at 100 even when overfunded.
         linked_entity_missing:
           type: boolean
-          description: True if the linked bank account/investment was deleted; progress then reads as 0 rather than erroring.
+          description: True if the linked savings account was deleted; progress then reads as 0 rather than erroring.
     GoalCreateRequest:
       type: object
       required: [name, target_amount, linked_type, linked_id]
@@ -502,7 +347,7 @@ components:
         name: { type: string }
         target_amount: { type: number }
         target_date: { type: string, format: date-time }
-        linked_type: { type: string, enum: [bank_account, investment] }
+        linked_type: { type: string, enum: [bank_account] }
         linked_id: { type: string }
     GoalUpdateRequest:
       type: object
@@ -518,7 +363,7 @@ components:
       properties:
         id: { type: string }
         user_id: { type: string }
-        type: { type: string, enum: [budget_exceeded, fd_maturity, bill_due] }
+        type: { type: string, enum: [budget_exceeded, bill_due] }
         title: { type: string }
         message: { type: string }
         related_entity_type: { type: string }
@@ -535,17 +380,12 @@ components:
     SummaryResult:
       type: object
       properties:
-        income_total: { type: number }
         expense_total: { type: number }
-        investment_total: { type: number }
-        savings: { type: number }
-        net_worth:
+        savings_balance:
           type: number
           description: >
-            Current balance-sheet snapshot (bank balances + lifetime
-            investment remaining value + lifetime realized PnL − outstanding
-            debt) — independent of the month query param used for the other
-            figures in this response.
+            Current total across all savings accounts — independent of the
+            month query param used for expense_total/category_breakdown.
         category_breakdown:
           type: array
           items:
@@ -566,33 +406,13 @@ components:
         month:
           type: string
           example: "2026-07"
-        income: { type: number }
         expense: { type: number }
-        investment: { type: number }
-        savings: { type: number }
-        net_worth:
-          type: number
-          description: Today's net-worth snapshot, repeated for every month in the range (see /summary/networth-history for a dated breakdown).
         budget_status:
           type: array
           items: { $ref: '#/components/schemas/BudgetStatus' }
         overall_budget:
           allOf: [{ $ref: '#/components/schemas/BudgetStatus' }]
           nullable: true
-    NetWorthPoint:
-      type: object
-      description: >
-        Cash always reflects today's balance for every point (no historical
-        ledger); investments/debt are filtered by their own dated field
-        (correctly excluded before they existed) but still contribute
-        current running totals rather than a true historical value.
-      properties:
-        month: { type: string, example: "2026-07" }
-        cash: { type: number }
-        investments: { type: number }
-        realized_pnl: { type: number }
-        debt: { type: number }
-        net_worth: { type: number }
 
 paths:
   /health:
@@ -766,81 +586,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /income:
-    get:
-      tags: [income]
-      summary: List income entries for a month
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: month
-          in: query
-          schema: { type: string, example: "2026-07" }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/Income' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-    post:
-      tags: [income]
-      summary: Add an income entry
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/IncomeCreateRequest' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Income' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /income/{id}:
-    put:
-      tags: [income]
-      summary: Update an income entry
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/IncomeUpdateRequest' }
-      responses:
-        '200': { description: Updated }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-    delete:
-      tags: [income]
-      summary: Soft-delete an income entry
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200': { description: Deleted }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
   /expenses:
     get:
       tags: [expenses]
@@ -923,162 +668,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /investment/types:
-    get:
-      tags: [investment]
-      summary: List the controlled vocabulary of investment types
-      description: Populate any type picker from this endpoint — it's a live lookup table, don't hardcode it.
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/InvestmentType' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /investment/xirr:
-    get:
-      tags: [investment]
-      summary: Portfolio-blended XIRR across all of the user's investments
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/XIRRResponse' }
-        '400': { description: Not enough investment activity to compute a return }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /investment:
-    get:
-      tags: [investment]
-      summary: List investments for a month
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: month
-          in: query
-          schema: { type: string, example: "2026-07" }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/Investment' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-    post:
-      tags: [investment]
-      summary: Create an investment
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/InvestmentCreateRequest' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Investment' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /investment/{id}:
-    put:
-      tags: [investment]
-      summary: Update an investment
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/InvestmentUpdateRequest' }
-      responses:
-        '200': { description: Updated }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-    delete:
-      tags: [investment]
-      summary: Soft-delete an investment
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200': { description: Deleted }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
-  /investment/{id}/close:
-    post:
-      tags: [investment]
-      summary: Record a full or partial withdrawal
-      description: >
-        Repeatable for partial withdrawals until the remaining basis hits
-        zero; status transitions ACTIVE → PARTIALLY_RETRIEVED → CLOSED.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/InvestmentCloseRequest' }
-      responses:
-        '200':
-          description: Updated investment
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Investment' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
-  /investment/{id}/xirr:
-    get:
-      tags: [investment]
-      summary: Single investment's annualized return
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/XIRRResponse' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
   /bank-accounts:
     get:
       tags: [bank-accounts]
@@ -1149,84 +738,14 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /debts:
-    get:
-      tags: [debts]
-      summary: List debts / loans
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/Debt' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+  /bank-accounts/{id}/adjust:
     post:
-      tags: [debts]
-      summary: Create a debt / loan
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/DebtCreateRequest' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Debt' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /debts/{id}:
-    put:
-      tags: [debts]
-      summary: Update a debt (principal and start_date are immutable)
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/DebtUpdateRequest' }
-      responses:
-        '200': { description: Updated }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-    delete:
-      tags: [debts]
-      summary: Soft-delete a debt
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200': { description: Deleted }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
-  /debts/{id}/payments:
-    post:
-      tags: [debts]
-      summary: Record an EMI/prepayment
+      tags: [bank-accounts]
+      summary: Add money to or withdraw money from a savings account
       description: >
-        Caller supplies the principal/interest split from their lender's
-        amortization schedule. Auto-closes the debt when the outstanding
-        balance hits zero.
+        Applies an atomic balance change and records it in the audit log.
+        A withdrawal that would drive the balance negative is rejected
+        (400) rather than allowed to overdraw.
       security:
         - bearerAuth: []
       parameters:
@@ -1238,13 +757,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/DebtPaymentRequest' }
+            schema: { $ref: '#/components/schemas/BankAccountAdjustRequest' }
       responses:
         '200':
-          description: Updated debt
+          description: Updated bank account
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Debt' }
+              schema: { $ref: '#/components/schemas/BankAccount' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1510,7 +1029,11 @@ paths:
   /summary:
     get:
       tags: [summary]
-      summary: Monthly income/expense/savings + current net worth + budget status
+      summary: Monthly expense total + current savings balance + budget status
+      description: >
+        With no month query param, expense_total/category_breakdown/
+        budget_status reflect all-time totals instead of a single month;
+        savings_balance is always the current total regardless of month.
       security:
         - bearerAuth: []
       parameters:
@@ -1529,7 +1052,7 @@ paths:
   /summary/compare:
     get:
       tags: [summary]
-      summary: Compare income, expense, savings and budget status over recent months
+      summary: Compare expense totals and budget status over recent months
       security:
         - bearerAuth: []
       parameters:
@@ -1546,27 +1069,5 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/MonthlyComparison' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /summary/networth-history:
-    get:
-      tags: [summary]
-      summary: Per-month net worth breakdown by asset class
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: months
-          in: query
-          required: false
-          schema: { type: integer, default: 6, maximum: 12 }
-      responses:
-        '200':
-          description: Net worth history array
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/NetWorthPoint' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
