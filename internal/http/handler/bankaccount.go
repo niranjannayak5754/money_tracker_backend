@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"log/slog"
 
@@ -30,6 +31,7 @@ func (h *BankAccountHandler) Routes() http.Handler {
 	r.Delete("/{id}", h.delete)
 	r.Post("/{id}/adjust", h.adjust)
 	r.Get("/{id}/ledger", h.ledger)
+	r.Get("/{id}/balance-history", h.balanceHistory)
 	return r
 }
 
@@ -97,6 +99,30 @@ func (h *BankAccountHandler) ledger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, entries)
+}
+
+func (h *BankAccountHandler) balanceHistory(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
+
+	id := common.BankAccountID(chi.URLParam(r, "id"))
+	months := 3
+	if qs := r.URL.Query().Get("months"); qs != "" {
+		if v, err := strconv.Atoi(qs); err == nil {
+			months = v
+		}
+	}
+
+	out, err := h.svc.BalanceHistory(r.Context(), uid, id, months)
+	if err != nil {
+		h.logger.Error("bankaccount.balance_history failed", "request_id", requestctx.RequestID(r.Context()), "uid", uid, "err", err)
+		response.WriteError(w, r, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, out)
 }
 
 func (h *BankAccountHandler) adjust(w http.ResponseWriter, r *http.Request) {

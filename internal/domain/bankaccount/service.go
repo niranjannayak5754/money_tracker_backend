@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
@@ -17,6 +18,16 @@ type Service interface {
 	Delete(ctx context.Context, userID common.UserID, id common.BankAccountID) error
 	Adjust(ctx context.Context, userID common.UserID, id common.BankAccountID, in AdjustInput) (Model, error)
 	ListLedger(ctx context.Context, userID common.UserID, id common.BankAccountID, month string) ([]LedgerEntry, error)
+	BalanceHistory(ctx context.Context, userID common.UserID, id common.BankAccountID, months int) ([]MonthlyBalance, error)
+}
+
+// MonthlyBalance is an account's closing balance at the end of one month —
+// the balance_after of its last ledger entry on or before that month, or
+// the previous month's closing balance carried forward if nothing moved
+// that month. Zero for any month before the account existed.
+type MonthlyBalance struct {
+	Month   string  `json:"month"`
+	Balance float64 `json:"balance"`
 }
 
 // AdjustDirection is which way an Adjust call moves an account's balance.
@@ -156,4 +167,44 @@ func (s *service) ListLedger(ctx context.Context, userID common.UserID, id commo
 		return []LedgerEntry{}, nil
 	}
 	return entries, nil
+}
+
+// BalanceHistory returns the account's closing balance for each of the
+// last `months` calendar months (oldest first), derived entirely from its
+// own ledger — independent of expenses or any other account.
+func (s *service) BalanceHistory(ctx context.Context, userID common.UserID, id common.BankAccountID, months int) ([]MonthlyBalance, error) {
+	if months <= 0 {
+		months = 3
+	}
+	if months > config.TWELVE {
+		return nil, apperr.ValidationErr("months cannot be greater than 12")
+	}
+
+	entries, err := s.repo.ListLedger(ctx, userID, id, time.Time{}, time.Time{})
+	if err != nil {
+		return nil, apperr.InternalErr("failed to list bank account ledger", err)
+	}
+
+	now := time.Now().UTC()
+	out := make([]MonthlyBalance, 0, months)
+	entryIdx := 0
+	var closingBalance float64
+
+	for i := months - 1; i >= 0; i-- {
+		t := now.AddDate(0, -i, 0)
+		monthStart := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+		monthEnd := monthStart.AddDate(0, 1, 0)
+
+		for entryIdx < len(entries) && entries[entryIdx].CreatedAt.Before(monthEnd) {
+			closingBalance = entries[entryIdx].BalanceAfter
+			entryIdx++
+		}
+
+		out = append(out, MonthlyBalance{
+			Month:   monthStart.Format(config.STANDARD_YEAR_MONTH),
+			Balance: closingBalance,
+		})
+	}
+
+	return out, nil
 }
