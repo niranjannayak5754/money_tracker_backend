@@ -15,7 +15,7 @@ services:
         value: :8080
 
       - key: MONGO_DB
-        value: money_tracker
+        value: expense_tracker
 
       - key: MONGO_URI
         sync: false
