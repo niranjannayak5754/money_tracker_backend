@@ -7,15 +7,16 @@ import (
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 )
 
 type Service interface {
 	Create(ctx context.Context, userID common.UserID, in CreateInput) (Model, error)
 	List(ctx context.Context, userID common.UserID) ([]Model, error)
-	Update(ctx context.Context, userID common.UserID, id common.BankAccountID, in UpdateInput) error
 	Delete(ctx context.Context, userID common.UserID, id common.BankAccountID) error
 	Adjust(ctx context.Context, userID common.UserID, id common.BankAccountID, in AdjustInput) (Model, error)
+	ListLedger(ctx context.Context, userID common.UserID, id common.BankAccountID, month string) ([]LedgerEntry, error)
 }
 
 // AdjustDirection is which way an Adjust call moves an account's balance.
@@ -43,12 +44,6 @@ func NewService(repo Repository) Service {
 type CreateInput struct {
 	Name         string
 	Balance      float64
-	InterestRate *float64
-}
-
-type UpdateInput struct {
-	Name         *string
-	Balance      *float64
 	InterestRate *float64
 }
 
@@ -88,35 +83,6 @@ func (s *service) List(ctx context.Context, userID common.UserID) ([]Model, erro
 		return []Model{}, nil
 	}
 	return items, nil
-}
-
-func (s *service) Update(ctx context.Context, userID common.UserID, id common.BankAccountID, in UpdateInput) error {
-	set := map[string]any{"updated_at": time.Now().UTC()}
-
-	if in.Name != nil {
-		if *in.Name == "" {
-			return apperr.ValidationErr("name cannot be empty")
-		}
-		set["name"] = *in.Name
-	}
-	if in.Balance != nil {
-		if *in.Balance < 0 {
-			return apperr.ValidationErr("balance cannot be negative")
-		}
-		set["balance"] = *in.Balance
-	}
-	if in.InterestRate != nil {
-		set["interest_rate"] = *in.InterestRate
-	}
-
-	updated, err := s.repo.Update(ctx, userID, id, set)
-	if err != nil {
-		return apperr.InternalErr("failed to update bank account", err)
-	}
-	if !updated {
-		return apperr.NotFoundErr("bank account not found")
-	}
-	return nil
 }
 
 func (s *service) Delete(ctx context.Context, userID common.UserID, id common.BankAccountID) error {
@@ -172,4 +138,22 @@ func (s *service) Adjust(ctx context.Context, userID common.UserID, id common.Ba
 	acc.Balance = newBalance
 	acc.UpdatedAt = time.Now().UTC()
 	return *acc, nil
+}
+
+// ListLedger returns an account's ledger entries, optionally scoped to a
+// single month — the opening entry (from Create) plus every Adjust since.
+func (s *service) ListLedger(ctx context.Context, userID common.UserID, id common.BankAccountID, month string) ([]LedgerEntry, error) {
+	start, end, err := shared.MonthRange(month)
+	if err != nil {
+		return nil, err
+	}
+
+	entries, err := s.repo.ListLedger(ctx, userID, id, start, end)
+	if err != nil {
+		return nil, apperr.InternalErr("failed to list bank account ledger", err)
+	}
+	if entries == nil {
+		return []LedgerEntry{}, nil
+	}
+	return entries, nil
 }

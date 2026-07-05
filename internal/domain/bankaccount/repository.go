@@ -2,6 +2,7 @@ package bankaccount
 
 import (
 	"context"
+	"time"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 )
@@ -10,7 +11,6 @@ type Repository interface {
 	Create(ctx context.Context, m Model) (common.BankAccountID, error)
 	List(ctx context.Context, userID common.UserID) ([]Model, error)
 	GetByID(ctx context.Context, userID common.UserID, id common.BankAccountID) (*Model, error)
-	Update(ctx context.Context, userID common.UserID, id common.BankAccountID, set map[string]any) (bool, error)
 	Delete(ctx context.Context, userID common.UserID, id common.BankAccountID) (bool, error)
 
 	// BalanceTotal sums non-deleted account balances for a user — used by
@@ -24,4 +24,9 @@ type Repository interface {
 	// cover it (checked atomically alongside the increment, not as a
 	// separate read, to avoid a race between two concurrent withdrawals).
 	Adjust(ctx context.Context, userID common.UserID, id common.BankAccountID, delta float64, note string) (float64, error)
+
+	// ListLedger returns the account's ledger entries (opening balance +
+	// every Adjust) in ascending created_at order. Zero start/end means
+	// all-time, matching shared.MonthRange's convention.
+	ListLedger(ctx context.Context, userID common.UserID, id common.BankAccountID, start, end time.Time) ([]LedgerEntry, error)
 }

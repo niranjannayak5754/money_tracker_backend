@@ -14,8 +14,8 @@ Backend Service for Money Tracking App in Go (Clean Architecture)
 - **Budgets** — per-category monthly caps plus an overall monthly cap,
   effective-dated, with spent/budgeted/percent-used and an exceeded flag
 - **Savings accounts** — name, balance, optional interest rate, with atomic
-  add/withdraw actions (audit-logged, guarded against overdrawing) alongside
-  manual balance edits for reconciliation
+  add/withdraw actions (audit-logged, guarded against overdrawing) and a
+  full ledger of every balance change; no direct balance editing
 - **Goals** — linked to a savings account; progress is derived live from
   the account's current balance, so an add/withdraw immediately moves it
 - **Recurring expenses** — monthly/yearly templates that auto-materialize

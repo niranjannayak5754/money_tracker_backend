@@ -32,14 +32,14 @@ func (f *fakeRepo) GetByID(ctx context.Context, userID common.UserID, id common.
 	cp := *acc
 	return &cp, nil
 }
-func (f *fakeRepo) Update(ctx context.Context, userID common.UserID, id common.BankAccountID, set map[string]any) (bool, error) {
-	return false, nil
-}
 func (f *fakeRepo) Delete(ctx context.Context, userID common.UserID, id common.BankAccountID) (bool, error) {
 	return false, nil
 }
 func (f *fakeRepo) BalanceTotal(ctx context.Context, userID common.UserID) (float64, error) {
 	return 0, nil
+}
+func (f *fakeRepo) ListLedger(ctx context.Context, userID common.UserID, id common.BankAccountID, start, end time.Time) ([]LedgerEntry, error) {
+	return nil, nil
 }
 func (f *fakeRepo) Adjust(ctx context.Context, userID common.UserID, id common.BankAccountID, delta float64, note string) (float64, error) {
 	acc, ok := f.accounts[id]

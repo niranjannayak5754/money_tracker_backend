@@ -27,9 +27,9 @@ func (h *BankAccountHandler) Routes() http.Handler {
 	r := chi.NewRouter()
 	r.Get("/", h.list)
 	r.Post("/", h.create)
-	r.Put("/{id}", h.update)
 	r.Delete("/{id}", h.delete)
 	r.Post("/{id}/adjust", h.adjust)
+	r.Get("/{id}/ledger", h.ledger)
 	return r
 }
 
@@ -80,37 +80,23 @@ func (h *BankAccountHandler) list(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, items)
 }
 
-func (h *BankAccountHandler) update(w http.ResponseWriter, r *http.Request) {
+func (h *BankAccountHandler) ledger(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUID(w, r)
 	if !ok {
 		return
 	}
 
 	id := common.BankAccountID(chi.URLParam(r, "id"))
+	month := r.URL.Query().Get("month")
 
-	var in struct {
-		Name         *string  `json:"name"`
-		Balance      *float64 `json:"balance"`
-		InterestRate *float64 `json:"interest_rate"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		response.BadReq(w, "invalid json payload")
-		return
-	}
-
-	err := h.svc.Update(r.Context(), uid, id, bankaccount.UpdateInput{
-		Name:         in.Name,
-		Balance:      in.Balance,
-		InterestRate: in.InterestRate,
-	})
+	entries, err := h.svc.ListLedger(r.Context(), uid, id, month)
 	if err != nil {
-		h.logger.Error("bankaccount.update failed", "request_id", requestctx.RequestID(r.Context()), "uid", uid, "err", err)
+		h.logger.Error("bankaccount.ledger failed", "request_id", requestctx.RequestID(r.Context()), "uid", uid, "err", err)
 		response.WriteError(w, r, err)
 		return
 	}
 
-	response.OK(w)
+	response.JSON(w, http.StatusOK, entries)
 }
 
 func (h *BankAccountHandler) adjust(w http.ResponseWriter, r *http.Request) {

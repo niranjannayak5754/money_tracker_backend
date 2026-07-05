@@ -204,20 +204,14 @@ components:
         balance:
           type: number
           description: >
-            Moved via POST /bank-accounts/{id}/adjust (add/withdraw), or
-            edited directly here for one-off reconciliation.
+            Only ever moved via POST /bank-accounts/{id}/adjust (add/withdraw)
+            or the initial create balance — never edited directly.
         interest_rate: { type: number, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     BankAccountCreateRequest:
       type: object
       required: [name, balance]
-      properties:
-        name: { type: string }
-        balance: { type: number, minimum: 0 }
-        interest_rate: { type: number }
-    BankAccountUpdateRequest:
-      type: object
       properties:
         name: { type: string }
         balance: { type: number, minimum: 0 }
@@ -231,6 +225,16 @@ components:
         note:
           type: string
           description: Optional; recorded in the audit log alongside the change.
+    BankAccountLedgerEntry:
+      type: object
+      properties:
+        id: { type: string }
+        bank_account_id: { type: string }
+        type: { type: string, enum: [opening, add, withdraw] }
+        amount: { type: number, description: Always positive; direction comes from type. }
+        note: { type: string }
+        balance_after: { type: number }
+        created_at: { type: string, format: date-time }
 
     # ---- recurring ----
     RecurringTemplate:
@@ -703,26 +707,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /bank-accounts/{id}:
-    put:
-      tags: [bank-accounts]
-      summary: Update a bank account
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/BankAccountUpdateRequest' }
-      responses:
-        '200': { description: Updated }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [bank-accounts]
       summary: Soft-delete a bank account
@@ -767,6 +751,32 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /bank-accounts/{id}/ledger:
+    get:
+      tags: [bank-accounts]
+      summary: List an account's ledger entries (opening balance + every add/withdraw)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: month
+          in: query
+          required: false
+          schema: { type: string, example: "2026-07" }
+          description: YYYY-MM. Omit for all-time.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BankAccountLedgerEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /recurring:
     get:
