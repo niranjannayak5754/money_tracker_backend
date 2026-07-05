@@ -52,8 +52,8 @@ func New(cfg config.Config, c *Container, logger *slog.Logger) *Server {
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  60 * time.Second,
 		},
-		recurringRunner:     scheduler.NewRecurringRunner(c.Recurring, c.Expenses, c.Income, c.Investment, logger),
-		notificationScanner: scheduler.NewNotificationScanner(c.Notification, c.Investment, c.Recurring, logger),
+		recurringRunner:     scheduler.NewRecurringRunner(c.Recurring, c.Expenses, logger),
+		notificationScanner: scheduler.NewNotificationScanner(c.Notification, c.Recurring, logger),
 		logger:              logger,
 	}
 }

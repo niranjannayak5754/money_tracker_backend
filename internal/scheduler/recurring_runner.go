@@ -12,32 +12,24 @@ import (
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/expense"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/income"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/recurring"
 )
 
 type RecurringRunner struct {
-	recurringSvc  recurring.Service
-	expenseSvc    expense.Service
-	incomeSvc     income.Service
-	investmentSvc investment.Service
-	logger        *slog.Logger
+	recurringSvc recurring.Service
+	expenseSvc   expense.Service
+	logger       *slog.Logger
 }
 
 func NewRecurringRunner(
 	recurringSvc recurring.Service,
 	expenseSvc expense.Service,
-	incomeSvc income.Service,
-	investmentSvc investment.Service,
 	logger *slog.Logger,
 ) *RecurringRunner {
 	return &RecurringRunner{
-		recurringSvc:  recurringSvc,
-		expenseSvc:    expenseSvc,
-		incomeSvc:     incomeSvc,
-		investmentSvc: investmentSvc,
-		logger:        logger.With("component", "recurring_runner"),
+		recurringSvc: recurringSvc,
+		expenseSvc:   expenseSvc,
+		logger:       logger.With("component", "recurring_runner"),
 	}
 }
 
@@ -70,21 +62,6 @@ func (r *RecurringRunner) materialize(ctx context.Context, tmpl recurring.Model)
 			Date:       tmpl.NextRunDate,
 			CategoryID: common.CategoryID(payloadString(tmpl.Payload, "category_id")),
 			Merchant:   payloadString(tmpl.Payload, "merchant"),
-			Notes:      payloadString(tmpl.Payload, "notes"),
-		})
-	case recurring.EntityIncome:
-		_, err = r.incomeSvc.Create(ctx, tmpl.UserID, income.CreateInput{
-			Amount: payloadFloat(tmpl.Payload, "amount"),
-			Date:   tmpl.NextRunDate,
-			Source: payloadString(tmpl.Payload, "source"),
-			Notes:  payloadString(tmpl.Payload, "notes"),
-		})
-	case recurring.EntityInvestment:
-		_, err = r.investmentSvc.Create(ctx, tmpl.UserID, investment.CreateInput{
-			Type:       payloadString(tmpl.Payload, "type"),
-			Instrument: payloadString(tmpl.Payload, "instrument"),
-			Amount:     payloadFloat(tmpl.Payload, "amount"),
-			Date:       tmpl.NextRunDate,
 			Notes:      payloadString(tmpl.Payload, "notes"),
 		})
 	default:

@@ -2,10 +2,12 @@ package bankaccount
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/apperr"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
+	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 )
 
 type Service interface {
@@ -13,6 +15,21 @@ type Service interface {
 	List(ctx context.Context, userID common.UserID) ([]Model, error)
 	Update(ctx context.Context, userID common.UserID, id common.BankAccountID, in UpdateInput) error
 	Delete(ctx context.Context, userID common.UserID, id common.BankAccountID) error
+	Adjust(ctx context.Context, userID common.UserID, id common.BankAccountID, in AdjustInput) (Model, error)
+}
+
+// AdjustDirection is which way an Adjust call moves an account's balance.
+type AdjustDirection string
+
+const (
+	AdjustAdd      AdjustDirection = "add"
+	AdjustWithdraw AdjustDirection = "withdraw"
+)
+
+type AdjustInput struct {
+	Direction AdjustDirection
+	Amount    float64
+	Note      string
 }
 
 type service struct {
@@ -111,4 +128,48 @@ func (s *service) Delete(ctx context.Context, userID common.UserID, id common.Ba
 		return apperr.NotFoundErr("bank account not found")
 	}
 	return nil
+}
+
+// Adjust moves money in or out of a savings account balance — a manual
+// add/withdraw, not a transaction-linked ledger. The balance is updated via
+// an atomic increment (see Repository.Adjust) rather than a read-then-write,
+// so two concurrent withdrawals can't both pass a balance check and
+// overdraw the account.
+func (s *service) Adjust(ctx context.Context, userID common.UserID, id common.BankAccountID, in AdjustInput) (Model, error) {
+	if in.Amount <= 0 {
+		return Model{}, apperr.ValidationErr("amount must be greater than zero")
+	}
+
+	var delta float64
+	switch in.Direction {
+	case AdjustAdd:
+		delta = in.Amount
+	case AdjustWithdraw:
+		delta = -in.Amount
+	default:
+		return Model{}, apperr.ValidationErr("direction must be add or withdraw")
+	}
+
+	acc, err := s.repo.GetByID(ctx, userID, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return Model{}, apperr.NotFoundErr("bank account not found")
+		}
+		return Model{}, apperr.InternalErr("failed to load bank account", err)
+	}
+	if delta < 0 && acc.Balance+delta < 0 {
+		return Model{}, apperr.ValidationErr("insufficient balance for withdrawal")
+	}
+
+	newBalance, err := s.repo.Adjust(ctx, userID, id, delta, in.Note)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return Model{}, apperr.ValidationErr("insufficient balance for withdrawal")
+		}
+		return Model{}, apperr.InternalErr("failed to adjust bank account balance", err)
+	}
+
+	acc.Balance = newBalance
+	acc.UpdatedAt = time.Now().UTC()
+	return *acc, nil
 }

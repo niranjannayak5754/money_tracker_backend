@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/notification"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/recurring"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/logging"
@@ -45,54 +44,14 @@ func (f *fakeNotificationService) CreateIfNotExists(ctx context.Context, userID 
 	return true, nil
 }
 
-func TestNotificationScanner_CreatesMaturityNotificationForUpcomingInvestment(t *testing.T) {
-	maturityDate := time.Now().UTC().AddDate(0, 0, 5)
-	invSvc := &fakeInvestmentService{maturing: []investment.Model{
-		{ID: "inv-1", UserID: "user-1", DisplayType: "Fixed Deposit (FD)", Instrument: "HDFC FD", MaturityDate: &maturityDate},
-	}}
-	recSvc := &fakeRecurringService{}
-	notifSvc := &fakeNotificationService{}
-
-	scanner := NewNotificationScanner(notifSvc, invSvc, recSvc, logging.New())
-	scanner.RunOnce(context.Background())
-
-	if len(notifSvc.createCalls) != 1 {
-		t.Fatalf("expected 1 maturity notification, got %d", len(notifSvc.createCalls))
-	}
-	got := notifSvc.createCalls[0]
-	if got.Type != notification.TypeFDMaturity || got.RelatedEntityType != "investment" || got.RelatedEntityID != "inv-1" {
-		t.Fatalf("unexpected notification: %+v", got)
-	}
-}
-
-func TestNotificationScanner_DoesNotDuplicateAcrossTicks(t *testing.T) {
-	maturityDate := time.Now().UTC().AddDate(0, 0, 5)
-	invSvc := &fakeInvestmentService{maturing: []investment.Model{
-		{ID: "inv-1", UserID: "user-1", DisplayType: "Fixed Deposit (FD)", MaturityDate: &maturityDate},
-	}}
-	recSvc := &fakeRecurringService{}
-	notifSvc := &fakeNotificationService{}
-
-	scanner := NewNotificationScanner(notifSvc, invSvc, recSvc, logging.New())
-
-	// Simulate two ticker runs, as would happen an hour apart.
-	scanner.RunOnce(context.Background())
-	scanner.RunOnce(context.Background())
-
-	if len(notifSvc.createCalls) != 1 {
-		t.Fatalf("expected exactly 1 notification across two ticker runs, got %d", len(notifSvc.createCalls))
-	}
-}
-
 func TestNotificationScanner_CreatesBillDueNotificationForUpcomingExpenseTemplate(t *testing.T) {
 	nextRun := time.Now().UTC().AddDate(0, 0, 2)
 	recSvc := &fakeRecurringService{upcoming: []recurring.Model{
 		{ID: "rec-1", UserID: "user-1", EntityType: recurring.EntityExpense, NextRunDate: nextRun},
 	}}
-	invSvc := &fakeInvestmentService{}
 	notifSvc := &fakeNotificationService{}
 
-	scanner := NewNotificationScanner(notifSvc, invSvc, recSvc, logging.New())
+	scanner := NewNotificationScanner(notifSvc, recSvc, logging.New())
 	scanner.RunOnce(context.Background())
 
 	if len(notifSvc.createCalls) != 1 {
@@ -104,16 +63,32 @@ func TestNotificationScanner_CreatesBillDueNotificationForUpcomingExpenseTemplat
 	}
 }
 
+func TestNotificationScanner_DoesNotDuplicateAcrossTicks(t *testing.T) {
+	nextRun := time.Now().UTC().AddDate(0, 0, 2)
+	recSvc := &fakeRecurringService{upcoming: []recurring.Model{
+		{ID: "rec-1", UserID: "user-1", EntityType: recurring.EntityExpense, NextRunDate: nextRun},
+	}}
+	notifSvc := &fakeNotificationService{}
+
+	scanner := NewNotificationScanner(notifSvc, recSvc, logging.New())
+
+	// Simulate two ticker runs, as would happen an hour apart.
+	scanner.RunOnce(context.Background())
+	scanner.RunOnce(context.Background())
+
+	if len(notifSvc.createCalls) != 1 {
+		t.Fatalf("expected exactly 1 notification across two ticker runs, got %d", len(notifSvc.createCalls))
+	}
+}
+
 func TestNotificationScanner_IgnoresNonExpenseRecurringTemplates(t *testing.T) {
 	nextRun := time.Now().UTC().AddDate(0, 0, 2)
 	recSvc := &fakeRecurringService{upcoming: []recurring.Model{
-		{ID: "rec-income", UserID: "user-1", EntityType: recurring.EntityIncome, NextRunDate: nextRun},
-		{ID: "rec-invest", UserID: "user-1", EntityType: recurring.EntityInvestment, NextRunDate: nextRun},
+		{ID: "rec-other", UserID: "user-1", EntityType: recurring.EntityType("something_else"), NextRunDate: nextRun},
 	}}
-	invSvc := &fakeInvestmentService{}
 	notifSvc := &fakeNotificationService{}
 
-	scanner := NewNotificationScanner(notifSvc, invSvc, recSvc, logging.New())
+	scanner := NewNotificationScanner(notifSvc, recSvc, logging.New())
 	scanner.RunOnce(context.Background())
 
 	if len(notifSvc.createCalls) != 0 {
@@ -122,11 +97,10 @@ func TestNotificationScanner_IgnoresNonExpenseRecurringTemplates(t *testing.T) {
 }
 
 func TestNotificationScanner_NoActivity_CreatesNothing(t *testing.T) {
-	invSvc := &fakeInvestmentService{}
 	recSvc := &fakeRecurringService{}
 	notifSvc := &fakeNotificationService{}
 
-	scanner := NewNotificationScanner(notifSvc, invSvc, recSvc, logging.New())
+	scanner := NewNotificationScanner(notifSvc, recSvc, logging.New())
 	scanner.RunOnce(context.Background())
 
 	if len(notifSvc.createCalls) != 0 {

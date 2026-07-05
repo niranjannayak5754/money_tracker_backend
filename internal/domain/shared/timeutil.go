@@ -9,24 +9,15 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// appLocation is the timezone used to interpret date/time inputs that don't
-// carry their own UTC offset (e.g. "2025-11-10"). Without this, such inputs
-// default to UTC, which can bucket a transaction into the wrong day/month
-// for a non-UTC user. Set once at startup via SetAppTimezone.
-var appLocation = time.UTC
-
-// SetAppTimezone sets the timezone used for offset-less date/time parsing.
-// Call once at startup, before serving requests.
-func SetAppTimezone(loc *time.Location) {
-	if loc != nil {
-		appLocation = loc
-	}
-}
-
 type FlexibleTime struct {
 	time.Time
 }
 
+// UnmarshalJSON parses date/time inputs as plain calendar values in UTC —
+// these fields (expense/goal/recurring dates, etc.) represent a date the
+// user picked, not a real-world instant, so no timezone conversion is
+// applied. Parsing "2026-07-05" as anything but UTC midnight of that same
+// day would shift the stored calendar date by the app's offset from UTC.
 func (ft *FlexibleTime) UnmarshalJSON(b []byte) error {
 	str := string(b)
 
@@ -50,10 +41,10 @@ func (ft *FlexibleTime) UnmarshalJSON(b []byte) error {
 		"2006-01-02 15:04",    // 2025-11-10 10:30
 	}
 
-	// ParseInLocation only matters for layouts with no zone in the string
+	// time.UTC only matters for layouts with no zone in the string
 	// (RFC3339's embedded offset always wins regardless of the location arg).
 	for _, layout := range layouts {
-		if t, err := time.ParseInLocation(layout, s, appLocation); err == nil {
+		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
 			ft.Time = t
 			return nil
 		}

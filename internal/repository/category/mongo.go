@@ -164,7 +164,7 @@ func (m *MongoRepo) List(
 
 // GetByID fetches a single category by ID, scoped to the user — used by
 // archive/reassign flows that need to know the category's own Type before
-// deciding which entity (expense vs income) to check/reassign against.
+// deciding which entity to check/reassign against.
 func (m *MongoRepo) GetByID(
 	ctx context.Context,
 	userID common.UserID,

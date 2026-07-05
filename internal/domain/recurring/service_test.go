@@ -127,11 +127,8 @@ const testUID = common.UserID("user-1")
 func mustCreateTemplate(t *testing.T, svc Service, entity EntityType, start time.Time, endDate *time.Time) Model {
 	t.Helper()
 	payload := map[string]any{"amount": 500.0}
-	switch entity {
-	case EntityExpense:
+	if entity == EntityExpense {
 		payload["category_id"] = "cat-1"
-	case EntityInvestment:
-		payload["type"] = "fixed_deposit"
 	}
 
 	m, err := svc.Create(context.Background(), testUID, CreateInput{
@@ -188,7 +185,7 @@ func TestListDue_ReturnsInBoundsTemplates(t *testing.T) {
 	ctx := context.Background()
 
 	past := time.Now().UTC().AddDate(0, -1, 0)
-	tmpl := mustCreateTemplate(t, svc, EntityIncome, past, nil)
+	tmpl := mustCreateTemplate(t, svc, EntityExpense, past, nil)
 
 	due, err := svc.ListDue(ctx, time.Now().UTC())
 	if err != nil {
@@ -211,7 +208,7 @@ func TestMarkRun_AdvancesNextRunDateAndSetsLastRunDate(t *testing.T) {
 	ctx := context.Background()
 
 	start := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
-	tmpl := mustCreateTemplate(t, svc, EntityIncome, start, nil)
+	tmpl := mustCreateTemplate(t, svc, EntityExpense, start, nil)
 
 	ranAt := time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
 	if err := svc.MarkRun(ctx, testUID, tmpl.ID, ranAt); err != nil {
@@ -242,7 +239,7 @@ func TestMarkRun_DeactivatesWhenNextExceedsEndDate(t *testing.T) {
 
 	start := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC) // next occurrence (Feb 15) exceeds this
-	tmpl := mustCreateTemplate(t, svc, EntityIncome, start, &end)
+	tmpl := mustCreateTemplate(t, svc, EntityExpense, start, &end)
 
 	if err := svc.MarkRun(ctx, testUID, tmpl.ID, start); err != nil {
 		t.Fatalf("mark run failed: %v", err)
@@ -263,10 +260,10 @@ func TestUpdate_EditingPayloadDoesNotTouchSchedule(t *testing.T) {
 	ctx := context.Background()
 
 	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
-	tmpl := mustCreateTemplate(t, svc, EntityIncome, start, nil)
+	tmpl := mustCreateTemplate(t, svc, EntityExpense, start, nil)
 	originalNextRun := tmpl.NextRunDate
 
-	newPayload := map[string]any{"amount": 999.0, "source": "salary"}
+	newPayload := map[string]any{"amount": 999.0, "category_id": "cat-2", "merchant": "New Landlord"}
 	if err := svc.Update(ctx, testUID, tmpl.ID, UpdateInput{Payload: newPayload}); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}

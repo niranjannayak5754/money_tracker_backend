@@ -10,7 +10,6 @@ type LinkedType string
 
 const (
 	LinkedBankAccount LinkedType = "bank_account"
-	LinkedInvestment  LinkedType = "investment"
 )
 
 type Status string
@@ -21,7 +20,7 @@ const (
 	StatusAbandoned Status = "abandoned"
 )
 
-// Model is a savings goal linked to an existing bank account or investment.
+// Model is a savings goal linked to an existing bank account.
 // Progress isn't stored — it's resolved at read time from the linked
 // entity's current value, so there's no separate ledger to keep in sync.
 type Model struct {
@@ -46,7 +45,7 @@ type WithProgress struct {
 	// PercentComplete is capped to [0, 100] — a goal can be over-funded,
 	// but "percent complete" reads oddly past full.
 	PercentComplete float64 `json:"percent_complete"`
-	// LinkedEntityMissing is true when the linked bank account/investment
-	// no longer exists (deleted) — progress reads as 0 rather than erroring.
+	// LinkedEntityMissing is true when the linked bank account no longer
+	// exists (deleted) — progress reads as 0 rather than erroring.
 	LinkedEntityMissing bool `json:"linked_entity_missing,omitempty"`
 }

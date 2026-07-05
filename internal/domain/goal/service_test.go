@@ -8,7 +8,6 @@ import (
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/bankaccount"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/repository"
 )
 
@@ -90,18 +89,6 @@ func (f *fakeBankAccountRepo) GetByID(ctx context.Context, userID common.UserID,
 	return acc, nil
 }
 
-type fakeInvestmentRepo struct {
-	investments map[common.InvestmentID]*investment.Model
-}
-
-func (f *fakeInvestmentRepo) GetByID(ctx context.Context, userID common.UserID, id common.InvestmentID) (*investment.Model, error) {
-	inv, ok := f.investments[id]
-	if !ok || inv.UserID != userID {
-		return nil, repository.ErrNotFound
-	}
-	return inv, nil
-}
-
 // --- tests ---
 
 const testUID = common.UserID("user-1")
@@ -111,7 +98,7 @@ func TestResolveProgress_BankAccountLinked_ComputesFromBalance(t *testing.T) {
 	bankRepo := &fakeBankAccountRepo{accounts: map[common.BankAccountID]*bankaccount.Model{
 		"acc-1": {ID: "acc-1", UserID: testUID, Balance: 4000},
 	}}
-	svc := NewService(goalRepo, bankRepo, &fakeInvestmentRepo{})
+	svc := NewService(goalRepo, bankRepo)
 	ctx := context.Background()
 
 	g, err := svc.Create(ctx, testUID, CreateInput{
@@ -135,40 +122,12 @@ func TestResolveProgress_BankAccountLinked_ComputesFromBalance(t *testing.T) {
 	}
 }
 
-func TestResolveProgress_InvestmentLinked_ComputesFromAmountPlusRetrieved(t *testing.T) {
-	goalRepo := newFakeGoalRepo()
-	invRepo := &fakeInvestmentRepo{investments: map[common.InvestmentID]*investment.Model{
-		"inv-1": {ID: "inv-1", UserID: testUID, Amount: 3000, RetrievedAmount: 2000},
-	}}
-	svc := NewService(goalRepo, &fakeBankAccountRepo{}, invRepo)
-	ctx := context.Background()
-
-	g, err := svc.Create(ctx, testUID, CreateInput{
-		Name:         "House Downpayment",
-		TargetAmount: 10000,
-		LinkedType:   LinkedInvestment,
-		LinkedID:     "inv-1",
-	})
-	if err != nil {
-		t.Fatalf("create failed: %v", err)
-	}
-
-	// total contribution counts remaining basis + whatever was withdrawn,
-	// not just the current remaining amount.
-	if g.CurrentValue != 5000 {
-		t.Fatalf("expected current value 5000 (3000+2000), got %v", g.CurrentValue)
-	}
-	if g.PercentComplete != 50 {
-		t.Fatalf("expected 50%% complete, got %v", g.PercentComplete)
-	}
-}
-
 func TestPercentComplete_CapsAt100WhenOverfunded(t *testing.T) {
 	goalRepo := newFakeGoalRepo()
 	bankRepo := &fakeBankAccountRepo{accounts: map[common.BankAccountID]*bankaccount.Model{
 		"acc-1": {ID: "acc-1", UserID: testUID, Balance: 15000},
 	}}
-	svc := NewService(goalRepo, bankRepo, &fakeInvestmentRepo{})
+	svc := NewService(goalRepo, bankRepo)
 	ctx := context.Background()
 
 	g, err := svc.Create(ctx, testUID, CreateInput{
@@ -191,7 +150,7 @@ func TestPercentComplete_CapsAt100WhenOverfunded(t *testing.T) {
 
 func TestResolveProgress_MissingLinkedBankAccount_DegradesGracefully(t *testing.T) {
 	goalRepo := newFakeGoalRepo()
-	svc := NewService(goalRepo, &fakeBankAccountRepo{accounts: map[common.BankAccountID]*bankaccount.Model{}}, &fakeInvestmentRepo{})
+	svc := NewService(goalRepo, &fakeBankAccountRepo{accounts: map[common.BankAccountID]*bankaccount.Model{}})
 	ctx := context.Background()
 
 	g, err := svc.Create(ctx, testUID, CreateInput{
@@ -215,31 +174,12 @@ func TestResolveProgress_MissingLinkedBankAccount_DegradesGracefully(t *testing.
 	}
 }
 
-func TestResolveProgress_MissingLinkedInvestment_DegradesGracefully(t *testing.T) {
-	goalRepo := newFakeGoalRepo()
-	svc := NewService(goalRepo, &fakeBankAccountRepo{}, &fakeInvestmentRepo{investments: map[common.InvestmentID]*investment.Model{}})
-	ctx := context.Background()
-
-	g, err := svc.Create(ctx, testUID, CreateInput{
-		Name:         "Closed Investment Goal",
-		TargetAmount: 5000,
-		LinkedType:   LinkedInvestment,
-		LinkedID:     "inv-does-not-exist",
-	})
-	if err != nil {
-		t.Fatalf("expected create to succeed, got error: %v", err)
-	}
-	if !g.LinkedEntityMissing {
-		t.Fatalf("expected LinkedEntityMissing to be true for a nonexistent linked investment")
-	}
-}
-
 func TestList_ResolvesProgressForEachGoal(t *testing.T) {
 	goalRepo := newFakeGoalRepo()
 	bankRepo := &fakeBankAccountRepo{accounts: map[common.BankAccountID]*bankaccount.Model{
 		"acc-1": {ID: "acc-1", UserID: testUID, Balance: 2500},
 	}}
-	svc := NewService(goalRepo, bankRepo, &fakeInvestmentRepo{})
+	svc := NewService(goalRepo, bankRepo)
 	ctx := context.Background()
 
 	if _, err := svc.Create(ctx, testUID, CreateInput{Name: "G1", TargetAmount: 5000, LinkedType: LinkedBankAccount, LinkedID: "acc-1"}); err != nil {
@@ -256,7 +196,7 @@ func TestList_ResolvesProgressForEachGoal(t *testing.T) {
 }
 
 func TestCreate_ValidatesLinkedType(t *testing.T) {
-	svc := NewService(newFakeGoalRepo(), &fakeBankAccountRepo{}, &fakeInvestmentRepo{})
+	svc := NewService(newFakeGoalRepo(), &fakeBankAccountRepo{})
 	ctx := context.Background()
 
 	_, err := svc.Create(ctx, testUID, CreateInput{

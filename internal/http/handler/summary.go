@@ -81,34 +81,3 @@ func (h *SummaryHandler) Compare(w http.ResponseWriter, r *http.Request) {
 
 	response.JSON(w, http.StatusOK, out)
 }
-
-// NetWorthHistory returns a per-month balance-sheet breakdown for the last
-// N months (default 6).
-func (h *SummaryHandler) NetWorthHistory(w http.ResponseWriter, r *http.Request) {
-	uid, ok := mustUID(w, r)
-	if !ok {
-		return
-	}
-
-	months := 6
-	if qs := r.URL.Query().Get("months"); qs != "" {
-		if v, err := strconv.Atoi(qs); err == nil {
-			months = v
-		}
-	}
-
-	out, err := h.svc.NetWorthHistory(r.Context(), uid, months)
-	if err != nil {
-		h.logger.Error(
-			"summary.networth_history failed",
-			"request_id", requestctx.RequestID(r.Context()),
-			"uid", uid,
-			"months", months,
-			"err", err,
-		)
-		response.WriteError(w, r, err)
-		return
-	}
-
-	response.JSON(w, http.StatusOK, out)
-}

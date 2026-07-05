@@ -56,7 +56,7 @@ type UpdateInput struct {
 }
 
 func (s *service) Create(ctx context.Context, userID common.UserID, in CreateInput) (Model, error) {
-	if in.EntityType != EntityExpense && in.EntityType != EntityIncome && in.EntityType != EntityInvestment {
+	if in.EntityType != EntityExpense {
 		return Model{}, apperr.ValidationErr("invalid entity_type")
 	}
 	if in.Frequency != FrequencyMonthly && in.Frequency != FrequencyYearly {
@@ -219,14 +219,9 @@ func validatePayload(entityType EntityType, payload map[string]any) error {
 		return apperr.ValidationErr("payload.amount is required and must be a positive number")
 	}
 
-	switch entityType {
-	case EntityExpense:
+	if entityType == EntityExpense {
 		if s, ok := payload["category_id"].(string); !ok || s == "" {
 			return apperr.ValidationErr("payload.category_id is required for expense templates")
-		}
-	case EntityInvestment:
-		if s, ok := payload["type"].(string); !ok || s == "" {
-			return apperr.ValidationErr("payload.type is required for investment templates")
 		}
 	}
 

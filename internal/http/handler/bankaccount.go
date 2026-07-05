@@ -29,6 +29,7 @@ func (h *BankAccountHandler) Routes() http.Handler {
 	r.Post("/", h.create)
 	r.Put("/{id}", h.update)
 	r.Delete("/{id}", h.delete)
+	r.Post("/{id}/adjust", h.adjust)
 	return r
 }
 
@@ -110,6 +111,39 @@ func (h *BankAccountHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.OK(w)
+}
+
+func (h *BankAccountHandler) adjust(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUID(w, r)
+	if !ok {
+		return
+	}
+
+	id := common.BankAccountID(chi.URLParam(r, "id"))
+
+	var in struct {
+		Direction string  `json:"direction"`
+		Amount    float64 `json:"amount"`
+		Note      string  `json:"note"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		response.BadReq(w, "invalid json payload")
+		return
+	}
+
+	out, err := h.svc.Adjust(r.Context(), uid, id, bankaccount.AdjustInput{
+		Direction: bankaccount.AdjustDirection(in.Direction),
+		Amount:    in.Amount,
+		Note:      in.Note,
+	})
+	if err != nil {
+		h.logger.Error("bankaccount.adjust failed", "request_id", requestctx.RequestID(r.Context()), "uid", uid, "err", err)
+		response.WriteError(w, r, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, out)
 }
 
 func (h *BankAccountHandler) delete(w http.ResponseWriter, r *http.Request) {

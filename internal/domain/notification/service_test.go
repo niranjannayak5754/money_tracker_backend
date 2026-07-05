@@ -147,10 +147,10 @@ func TestCreateIfNotExists_CreatesAgainAfterDismiss(t *testing.T) {
 	ctx := context.Background()
 
 	in := CreateInput{
-		Type:              TypeFDMaturity,
-		Title:             "Investment maturing soon",
-		RelatedEntityType: "investment",
-		RelatedEntityID:   "inv-1",
+		Type:              TypeBillDue,
+		Title:             "Upcoming bill",
+		RelatedEntityType: "recurring_template",
+		RelatedEntityID:   "rec-1",
 	}
 
 	created, err := svc.CreateIfNotExists(ctx, testUID, in)

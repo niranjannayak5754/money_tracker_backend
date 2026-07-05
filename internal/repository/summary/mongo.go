@@ -17,11 +17,8 @@ import (
 )
 
 type MongoRepo struct {
-	incomeCol       *mongo.Collection
 	expensesCol     *mongo.Collection
-	investmentsCol  *mongo.Collection
 	bankAccountsCol *mongo.Collection
-	debtsCol        *mongo.Collection
 	logger          *slog.Logger
 }
 
@@ -30,23 +27,16 @@ func New(
 	logger *slog.Logger,
 ) summary.Repository {
 	return &MongoRepo{
-		incomeCol:       db.Collection("income"),
 		expensesCol:     db.Collection("expenses"),
-		investmentsCol:  db.Collection("investments"),
 		bankAccountsCol: db.Collection("bank_accounts"),
-		debtsCol:        db.Collection("debts"),
 		logger:          logger.With("repo", "summary"),
 	}
 }
 
-// BankBalanceTotal sums current non-deleted bank account balances for a user.
+// BankBalanceTotal sums current non-deleted bank (savings) account
+// balances for a user.
 func (m *MongoRepo) BankBalanceTotal(ctx context.Context, userID common.UserID) (float64, error) {
 	return m.sumField(ctx, m.bankAccountsCol, userID, "balance", "bank balance")
-}
-
-// DebtOutstandingTotal sums current non-deleted debts' outstanding balances for a user.
-func (m *MongoRepo) DebtOutstandingTotal(ctx context.Context, userID common.UserID) (float64, error) {
-	return m.sumField(ctx, m.debtsCol, userID, "outstanding_balance", "debt outstanding")
 }
 
 func (m *MongoRepo) sumField(ctx context.Context, col *mongo.Collection, userID common.UserID, field, label string) (float64, error) {
@@ -70,127 +60,6 @@ func (m *MongoRepo) sumField(ctx context.Context, col *mongo.Collection, userID 
 	}
 	if cur.Next(ctx) {
 		if err := cur.Decode(&out); err != nil {
-			return 0, err
-		}
-		return shared.Decimal128ToFloat(out.Total), nil
-	}
-
-	return 0, nil
-}
-
-// DebtSnapshotAsOf sums current outstanding balances for debts whose
-// StartDate is before asOf.
-func (m *MongoRepo) DebtSnapshotAsOf(ctx context.Context, userID common.UserID, asOf time.Time) (float64, error) {
-	uid, err := mongohelper.ObjectIDFromHex(string(userID))
-	if err != nil {
-		return 0, err
-	}
-
-	cur, err := m.debtsCol.Aggregate(ctx, bson.A{
-		bson.D{{Key: "$match", Value: bson.M{"user_id": uid, "deleted_at": bson.M{"$exists": false}, "start_date": bson.M{"$lt": asOf}}}},
-		bson.D{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$outstanding_balance"}}}},
-	})
-	if err != nil {
-		m.logger.Error("mongo aggregate debt snapshot failed", "request_id", requestctx.RequestID(ctx), "uid", userID, "err", err)
-		return 0, err
-	}
-	defer cur.Close(ctx)
-
-	var out struct {
-		Total primitive.Decimal128 `bson:"total"`
-	}
-	if cur.Next(ctx) {
-		if err := cur.Decode(&out); err != nil {
-			return 0, err
-		}
-		return shared.Decimal128ToFloat(out.Total), nil
-	}
-
-	return 0, nil
-}
-
-// InvestmentSnapshotAsOf sums current Amount/RealizedPnl for investments
-// whose own Date is before asOf.
-func (m *MongoRepo) InvestmentSnapshotAsOf(ctx context.Context, userID common.UserID, asOf time.Time) (float64, float64, error) {
-	uid, err := mongohelper.ObjectIDFromHex(string(userID))
-	if err != nil {
-		return 0, 0, err
-	}
-
-	cur, err := m.investmentsCol.Aggregate(ctx, bson.A{
-		bson.D{{Key: "$match", Value: bson.M{"user_id": uid, "deleted_at": bson.M{"$exists": false}, "date": bson.M{"$lt": asOf}}}},
-		bson.D{{Key: "$group", Value: bson.M{
-			"_id":                nil,
-			"total_amount":       bson.M{"$sum": "$amount"},
-			"total_realized_pnl": bson.M{"$sum": "$realized_pnl"},
-		}}},
-	})
-	if err != nil {
-		m.logger.Error("mongo aggregate investment snapshot failed", "request_id", requestctx.RequestID(ctx), "uid", userID, "err", err)
-		return 0, 0, err
-	}
-	defer cur.Close(ctx)
-
-	var out struct {
-		TotalAmount   primitive.Decimal128 `bson:"total_amount"`
-		TotalRealized primitive.Decimal128 `bson:"total_realized_pnl"`
-	}
-	if cur.Next(ctx) {
-		if err := cur.Decode(&out); err != nil {
-			return 0, 0, err
-		}
-		return shared.Decimal128ToFloat(out.TotalAmount), shared.Decimal128ToFloat(out.TotalRealized), nil
-	}
-
-	return 0, 0, nil
-}
-
-func (m *MongoRepo) IncomeTotal(
-	ctx context.Context,
-	userId common.UserID,
-	start, end time.Time,
-) (float64, error) {
-
-	uid, err := mongohelper.ObjectIDFromHex(string(userId))
-	if err != nil {
-		return 0, err
-	}
-
-	match := bson.M{"user_id": uid, "deleted_at": bson.M{"$exists": false}}
-	if !start.IsZero() || !end.IsZero() {
-		match["date"] = bson.M{"$gte": start, "$lt": end}
-	}
-
-	cur, err := m.incomeCol.Aggregate(ctx, bson.A{
-		bson.D{{Key: "$match", Value: match}},
-		bson.D{{Key: "$group", Value: bson.M{
-			"_id":   nil,
-			"total": bson.M{"$sum": "$amount"},
-		}}},
-	})
-	if err != nil {
-		m.logger.Error(
-			"mongo aggregate income failed",
-			"request_id", requestctx.RequestID(ctx),
-			"uid", userId,
-			"err", err,
-		)
-		return 0, err
-	}
-	defer cur.Close(ctx)
-
-	var out struct {
-		Total primitive.Decimal128 `bson:"total"`
-	}
-
-	if cur.Next(ctx) {
-		if err := cur.Decode(&out); err != nil {
-			m.logger.Error(
-				"mongo decode income total failed",
-				"request_id", requestctx.RequestID(ctx),
-				"uid", userId,
-				"err", err,
-			)
 			return 0, err
 		}
 		return shared.Decimal128ToFloat(out.Total), nil
@@ -313,61 +182,4 @@ func (m *MongoRepo) ExpenseTotals(
 	}
 
 	return total, cats, nil
-}
-
-func (m *MongoRepo) InvestmentTotals(
-	ctx context.Context,
-	userId common.UserID,
-	start, end time.Time,
-) (float64, float64, error) {
-
-	uid, err := mongohelper.ObjectIDFromHex(string(userId))
-	if err != nil {
-		return 0, 0, err
-	}
-
-	match := bson.M{"user_id": uid, "deleted_at": bson.M{"$exists": false}}
-	if !start.IsZero() || !end.IsZero() {
-		match["date"] = bson.M{"$gte": start, "$lt": end}
-	}
-
-	// Group both sums in one aggregation: sum(amount) and sum(realized_pnl)
-	cur, err := m.investmentsCol.Aggregate(ctx, bson.A{
-		bson.D{{Key: "$match", Value: match}},
-		bson.D{{Key: "$group", Value: bson.M{
-			"_id":                nil,
-			"total_amount":       bson.M{"$sum": "$amount"},
-			"total_realized_pnl": bson.M{"$sum": "$realized_pnl"},
-		}}},
-	})
-	if err != nil {
-		m.logger.Error(
-			"mongo aggregate investments failed",
-			"request_id", requestctx.RequestID(ctx),
-			"uid", userId,
-			"err", err,
-		)
-		return 0, 0, err
-	}
-	defer cur.Close(ctx)
-
-	var out struct {
-		TotalAmount   primitive.Decimal128 `bson:"total_amount"`
-		TotalRealized primitive.Decimal128 `bson:"total_realized_pnl"`
-	}
-
-	if cur.Next(ctx) {
-		if err := cur.Decode(&out); err != nil {
-			m.logger.Error(
-				"mongo decode investments total failed",
-				"request_id", requestctx.RequestID(ctx),
-				"uid", userId,
-				"err", err,
-			)
-			return 0, 0, err
-		}
-		return shared.Decimal128ToFloat(out.TotalAmount), shared.Decimal128ToFloat(out.TotalRealized), nil
-	}
-
-	return 0, 0, nil
 }

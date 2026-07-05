@@ -10,15 +10,14 @@ type Type string
 
 const (
 	TypeBillDue        Type = "bill_due"
-	TypeFDMaturity     Type = "fd_maturity"
 	TypeBudgetExceeded Type = "budget_exceeded"
 )
 
 // Model is an in-app notification — surfaced only through this API, never
 // emailed/pushed/texted. RelatedEntityType/RelatedEntityID identify what
-// triggered it (e.g. "category"/"<id>:<month>", "investment"/"<id>") and
-// double as the dedup key so the same situation doesn't re-notify on every
-// tick or every subsequent expense.
+// triggered it (e.g. "category"/"<id>:<month>", "recurring_template"/"<id>")
+// and double as the dedup key so the same situation doesn't re-notify on
+// every tick or every subsequent expense.
 type Model struct {
 	ID                common.NotificationID `json:"id"`
 	UserID            common.UserID         `json:"user_id"`

@@ -5,7 +5,6 @@ import (
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/bankaccount"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/common"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/investment"
 )
 
 type Repository interface {
@@ -20,10 +19,4 @@ type Repository interface {
 // real bankaccount.Repository satisfies this structurally.
 type BankAccountRepository interface {
 	GetByID(ctx context.Context, userID common.UserID, id common.BankAccountID) (*bankaccount.Model, error)
-}
-
-// InvestmentRepository is the investment-side equivalent of
-// BankAccountRepository.
-type InvestmentRepository interface {
-	GetByID(ctx context.Context, userID common.UserID, id common.InvestmentID) (*investment.Model, error)
 }

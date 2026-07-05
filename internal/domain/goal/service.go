@@ -18,11 +18,10 @@ type Service interface {
 type service struct {
 	repo         Repository
 	bankAccounts BankAccountRepository
-	investments  InvestmentRepository
 }
 
-func NewService(repo Repository, bankAccounts BankAccountRepository, investments InvestmentRepository) Service {
-	return &service{repo: repo, bankAccounts: bankAccounts, investments: investments}
+func NewService(repo Repository, bankAccounts BankAccountRepository) Service {
+	return &service{repo: repo, bankAccounts: bankAccounts}
 }
 
 type CreateInput struct {
@@ -47,8 +46,8 @@ func (s *service) Create(ctx context.Context, userID common.UserID, in CreateInp
 	if in.TargetAmount <= 0 {
 		return WithProgress{}, apperr.ValidationErr("target_amount must be greater than zero")
 	}
-	if in.LinkedType != LinkedBankAccount && in.LinkedType != LinkedInvestment {
-		return WithProgress{}, apperr.ValidationErr("linked_type must be bank_account or investment")
+	if in.LinkedType != LinkedBankAccount {
+		return WithProgress{}, apperr.ValidationErr("linked_type must be bank_account")
 	}
 	if in.LinkedID == "" {
 		return WithProgress{}, apperr.ValidationErr("linked_id is required")
@@ -142,21 +141,13 @@ func (s *service) Delete(ctx context.Context, userID common.UserID, id common.Go
 func (s *service) resolveProgress(ctx context.Context, g Model) WithProgress {
 	wp := WithProgress{Model: g}
 
-	switch g.LinkedType {
-	case LinkedBankAccount:
+	if g.LinkedType == LinkedBankAccount {
 		acc, err := s.bankAccounts.GetByID(ctx, g.UserID, common.BankAccountID(g.LinkedID))
 		if err != nil {
 			wp.LinkedEntityMissing = true
 			return wp
 		}
 		wp.CurrentValue = acc.Balance
-	case LinkedInvestment:
-		inv, err := s.investments.GetByID(ctx, g.UserID, common.InvestmentID(g.LinkedID))
-		if err != nil {
-			wp.LinkedEntityMissing = true
-			return wp
-		}
-		wp.CurrentValue = inv.Amount + inv.RetrievedAmount
 	}
 
 	if g.TargetAmount > 0 {

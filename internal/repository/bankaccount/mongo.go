@@ -230,6 +230,71 @@ func (m *MongoRepo) Delete(ctx context.Context, userID common.UserID, id common.
 	return res.MatchedCount > 0, nil
 }
 
+// Adjust atomically applies delta to an account's balance via $inc — for a
+// withdrawal (delta < 0), the filter requires balance >= -delta so the
+// match (and thus the update) fails atomically rather than racing a
+// separate read-then-write against a concurrent withdrawal.
+func (m *MongoRepo) Adjust(ctx context.Context, userID common.UserID, id common.BankAccountID, delta float64, note string) (float64, error) {
+	uid, err := mongohelper.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return 0, err
+	}
+	aid, err := mongohelper.ObjectIDFromHex(string(id))
+	if err != nil {
+		return 0, err
+	}
+
+	incDec, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", delta))
+	if err != nil {
+		return 0, err
+	}
+
+	filter := bson.M{"_id": aid, "user_id": uid, "deleted_at": bson.M{"$exists": false}}
+	if delta < 0 {
+		minBalance, err := primitive.ParseDecimal128(fmt.Sprintf("%.2f", -delta))
+		if err != nil {
+			return 0, err
+		}
+		filter["balance"] = bson.M{"$gte": minBalance}
+	}
+
+	now := time.Now().UTC()
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+
+	var ma mongoBankAccount
+	err = m.col.FindOneAndUpdate(ctx, filter,
+		bson.M{"$inc": bson.M{"balance": incDec}, "$set": bson.M{"updated_at": now}},
+		opts,
+	).Decode(&ma)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return 0, repository.ErrNotFound
+		}
+		m.logger.Error("mongo adjust balance failed", "request_id", requestctx.RequestID(ctx), "uid", userID, "bank_account_id", id, "err", err)
+		return 0, err
+	}
+
+	newBalance := shared.Decimal128ToFloat(ma.Balance)
+
+	direction := "add"
+	if delta < 0 {
+		direction = "withdraw"
+	}
+	_ = m.audit.Write(ctx, auditrepo.Entry{
+		Action:   "adjust",
+		Entity:   "bank_account",
+		EntityID: string(id),
+		Payload: bson.M{
+			"direction":     direction,
+			"amount":        delta,
+			"note":          note,
+			"balance_after": newBalance,
+		},
+	})
+
+	return newBalance, nil
+}
+
 // BalanceTotal sums non-deleted account balances for a user via a
 // Mongo-side $sum for precision, matching the summary repo's pattern.
 func (m *MongoRepo) BalanceTotal(ctx context.Context, userID common.UserID) (float64, error) {

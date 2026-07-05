@@ -2,10 +2,8 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -17,7 +15,6 @@ type Config struct {
 	DBName         string
 	JWTSecret      string
 	AllowedOrigins []string
-	AppTimezone    *time.Location
 }
 
 func Load() (Config, error) {
@@ -45,13 +42,6 @@ func Load() (Config, error) {
 			cfg.AllowedOrigins = append(cfg.AllowedOrigins, o)
 		}
 	}
-
-	tzName := env("APP_TIMEZONE", "Asia/Kolkata")
-	loc, err := time.LoadLocation(tzName)
-	if err != nil {
-		return Config{}, fmt.Errorf("invalid APP_TIMEZONE %q: %w", tzName, err)
-	}
-	cfg.AppTimezone = loc
 
 	return cfg, nil
 }

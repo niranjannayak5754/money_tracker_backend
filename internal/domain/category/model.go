@@ -10,7 +10,7 @@ type Model struct {
 	ID        common.CategoryID `json:"id"`
 	UserID    common.UserID     `json:"user_id"`
 	Name      string            `json:"name"`
-	Type      string            `json:"type"` // expense | income
+	Type      string            `json:"type"` // expense (only type supported)
 	Color     string            `json:"color,omitempty"`
 	Icon      string            `json:"icon,omitempty"`
 	Archived  bool              `json:"archived"`

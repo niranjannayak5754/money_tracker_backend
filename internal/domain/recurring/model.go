@@ -9,9 +9,7 @@ import (
 type EntityType string
 
 const (
-	EntityExpense    EntityType = "expense"
-	EntityIncome     EntityType = "income"
-	EntityInvestment EntityType = "investment"
+	EntityExpense EntityType = "expense"
 )
 
 type Frequency string
@@ -24,8 +22,7 @@ const (
 // Model is a recurring-transaction template. Payload carries whatever
 // fields the target entity's Create needs (e.g. amount/category_id for an
 // expense) — the scheduler materializes it through the normal, validated
-// expense/income/investment Create path, it never writes those collections
-// directly.
+// expense Create path, it never writes that collection directly.
 type Model struct {
 	ID          common.RecurringID `json:"id"`
 	UserID      common.UserID      `json:"user_id"`

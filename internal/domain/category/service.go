@@ -36,17 +36,16 @@ type Service interface {
 type service struct {
 	repo     Repository
 	expenses ExpenseRepository
-	income   IncomeRepository
 }
 
-func NewService(repo Repository, expenses ExpenseRepository, income IncomeRepository) Service {
-	return &service{repo: repo, expenses: expenses, income: income}
+func NewService(repo Repository, expenses ExpenseRepository) Service {
+	return &service{repo: repo, expenses: expenses}
 }
 
 // INPUT STRUCTS
 type CreateInput struct {
 	Name  string
-	Type  string // expense | income (optional, default expense)
+	Type  string // expense (only type supported)
 	Color string // optional, hex like #RRGGBB
 	Icon  string // optional, freeform icon key/emoji
 }
@@ -123,7 +122,7 @@ func (s *service) Create(
 		kind = "expense"
 	}
 
-	if kind != "expense" && kind != "income" {
+	if kind != "expense" {
 		return Model{}, apperr.ValidationErr("invalid category type")
 	}
 
@@ -208,12 +207,12 @@ func (s *service) Update(
 }
 
 // prepareArchive never blocks archiving — a category can always be
-// archived regardless of how many expenses/income entries still reference
-// it, since those references resolve fine by ID against an archived
-// category (it isn't deleted, just hidden from pickers for new entries).
-// reassignTo, if given, is purely opt-in: it bulk-moves existing
-// expenses/income from categoryID to reassignTo before archiving, for
-// when the user actively wants to consolidate rather than just declutter.
+// archived regardless of how many expenses still reference it, since those
+// references resolve fine by ID against an archived category (it isn't
+// deleted, just hidden from pickers for new entries). reassignTo, if given,
+// is purely opt-in: it bulk-moves existing expenses from categoryID to
+// reassignTo before archiving, for when the user actively wants to
+// consolidate rather than just declutter.
 func (s *service) prepareArchive(
 	ctx context.Context,
 	userID common.UserID,
@@ -239,13 +238,6 @@ func (s *service) prepareArchive(
 	}
 	if !ok {
 		return apperr.ValidationErr("invalid reassign_to category — it must be an existing, non-archived category of the same type")
-	}
-
-	if cat.Type == "income" {
-		if _, err := s.income.ReassignCategory(ctx, userID, categoryID, *reassignTo); err != nil {
-			return apperr.InternalErr("failed to reassign income", err)
-		}
-		return nil
 	}
 
 	if _, err := s.expenses.ReassignCategory(ctx, userID, categoryID, *reassignTo); err != nil {

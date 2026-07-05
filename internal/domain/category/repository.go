@@ -35,9 +35,8 @@ type Repository interface {
 	) (bool, error)
 
 	// ExistsForUserWithType is like ExistsForUser but also requires the
-	// category's Type to match — used so an expense/income/budget can't
-	// silently attach to a category of the wrong kind (e.g. an expense
-	// pointing at an income-only category).
+	// category's Type to match — used so an expense/budget can't silently
+	// attach to a category of the wrong kind.
 	ExistsForUserWithType(
 		ctx context.Context,
 		userID common.UserID,
@@ -49,15 +48,6 @@ type Repository interface {
 // ExpenseRepository is a narrow cross-domain dependency used only for the
 // opt-in "reassign to another category" step of archiving.
 type ExpenseRepository interface {
-	ReassignCategory(
-		ctx context.Context,
-		userID common.UserID,
-		fromCategoryID, toCategoryID common.CategoryID,
-	) (int64, error)
-}
-
-// IncomeRepository mirrors ExpenseRepository, for income-type categories.
-type IncomeRepository interface {
 	ReassignCategory(
 		ctx context.Context,
 		userID common.UserID,

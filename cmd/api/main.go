@@ -7,7 +7,6 @@ import (
 	"syscall"
 
 	"github.com/niranjannayak5754/money_tracker_backend/internal/config"
-	"github.com/niranjannayak5754/money_tracker_backend/internal/domain/shared"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/logging"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/platform/mongo"
 	"github.com/niranjannayak5754/money_tracker_backend/internal/server"
@@ -21,8 +20,6 @@ func main() {
 		logger.Error("config load failed", "err", err)
 		os.Exit(1)
 	}
-
-	shared.SetAppTimezone(cfg.AppTimezone)
 
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
