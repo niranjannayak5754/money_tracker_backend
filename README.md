@@ -1,6 +1,32 @@
 # money_tracker_backend
 Backend Service for Money Tracking App in Go (Clean Architecture)
 
+> This is the `release-expense-tracker` branch — a focused expense tracker,
+> not the full money tracker on `release`/`main` (no income, investment,
+> debt, or net-worth tracking here).
+
+## Features
+
+- **Expenses** — create/edit/delete, tagged to a category (merchant, notes,
+  tags), filterable by month
+- **Categories** — expense-only, with color/icon, archive/unarchive, and
+  reassign-and-archive (move all expenses off a category before archiving)
+- **Budgets** — per-category monthly caps plus an overall monthly cap,
+  effective-dated, with spent/budgeted/percent-used and an exceeded flag
+- **Savings accounts** — name, balance, optional interest rate, with atomic
+  add/withdraw actions (audit-logged, guarded against overdrawing) alongside
+  manual balance edits for reconciliation
+- **Goals** — linked to a savings account; progress is derived live from
+  the account's current balance, so an add/withdraw immediately moves it
+- **Recurring expenses** — monthly/yearly templates that auto-materialize
+  into real expense records on schedule; pause/resume without touching past
+  occurrences
+- **Notifications** — budget-exceeded and upcoming-bill-due alerts
+- **Summary/analytics** — monthly expense total, current savings balance,
+  category breakdown, and a monthly expense trend across the last N months
+- Dates are stored and returned as plain calendar values (no timezone
+  conversion), so the date you pick is the date that's saved
+
 To run this service, Clone this repository & Follow these steps:
 
 1. First Change Directory to money_tracker_backend
